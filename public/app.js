@@ -14,6 +14,7 @@ const state = {
   token: null,
   lastEvidence: [],
   lastPromptTokens: null,
+  showAllDirections: false,
 };
 
 async function ensureSession() {
@@ -270,10 +271,18 @@ function selectAgent(id) {
   renderAgents();
 }
 
+const PRIMARY_DIRS = ["implement", "debug", "fix-error", "review", "explain", "freeform"];
+
 function renderDirections() {
   const root = $("direction-grid");
   root.innerHTML = "";
-  for (const d of state.catalog?.directions || []) {
+  const all = state.catalog?.directions || [];
+  const primary = all.filter((d) => PRIMARY_DIRS.includes(d.id));
+  const rest = all.filter((d) => !PRIMARY_DIRS.includes(d.id));
+  const showAll = state.showAllDirections;
+  const list = showAll ? all : primary.length ? primary : all;
+
+  for (const d of list) {
     const btn = document.createElement("button");
     btn.type = "button";
     btn.className = "dir-card";
@@ -288,6 +297,17 @@ function renderDirections() {
       applyDirectionUI();
     });
     root.appendChild(btn);
+  }
+  if (rest.length && !showAll) {
+    const more = document.createElement("button");
+    more.type = "button";
+    more.className = "dir-card dir-more";
+    more.innerHTML = `<span class="dir-label">More…</span><span class="dir-blurb">${rest.length} other tasks</span>`;
+    more.addEventListener("click", () => {
+      state.showAllDirections = true;
+      renderDirections();
+    });
+    root.appendChild(more);
   }
   applyDirectionUI();
 }
@@ -861,7 +881,32 @@ async function init() {
     state.projectId = null;
     state.project = null;
     state.lastEvidence = [];
+    state.lastPromptTokens = null;
+    sessionStorage.removeItem("prompter.projectPath");
     showAttachScreen();
+  });
+
+  $("btn-reindex")?.addEventListener("click", async () => {
+    if (!state.projectId) return;
+    const btn = $("btn-reindex");
+    if (btn) btn.disabled = true;
+    try {
+      const { data } = await api("/api/reindex-project", {
+        method: "POST",
+        body: JSON.stringify({ projectId: state.projectId }),
+      });
+      if (!data.ok) throw new Error(data.error || "Re-scan failed");
+      state.projectId = data.project.id;
+      state.project = data.project;
+      state.lastEvidence = [];
+      state.lastPromptTokens = null;
+      updateProjectContextUI();
+      toast(`Re-scanned · ${data.project.fileCount} files`);
+    } catch (e) {
+      toast(e.message || "Re-scan failed", true);
+    } finally {
+      if (btn) btn.disabled = false;
+    }
   });
 }
 
