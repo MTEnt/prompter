@@ -23,49 +23,98 @@
           <span class="logo" aria-hidden="true">P</span>
           <div>
             <div class="logo-name">Prompter</div>
-            <div class="logo-sub">pick CLI → direction → run</div>
+            <div class="logo-sub" id="logo-sub">attach project → prompt → run</div>
           </div>
         </div>
         <div class="topbar-meta">
-          <button type="button" class="ghost" id="btn-rescan" title="Re-scan installed CLIs">
+          <span id="context-status" class="context-status" hidden title="Project context">
+            <span class="context-status-dot" aria-hidden="true"></span>
+            <span id="context-status-text">No project</span>
+          </span>
+          <button type="button" class="ghost" id="btn-change-project" hidden title="Attach a different folder">
+            Change project
+          </button>
+          <button type="button" class="ghost" id="btn-rescan" title="Re-scan installed CLIs" hidden>
             Rescan CLIs
           </button>
-          <span id="agent-status" class="status-v">Checking CLIs…</span>
+          <span id="agent-status" class="status-v" hidden>Checking CLIs…</span>
         </div>
       </header>
 
-      <main class="stage stage-simple">
+      <!-- GATE: one click attach -->
+      <main class="stage stage-simple" id="screen-attach">
+        <section class="attach-hero">
+          <h1 class="attach-title">Open a project</h1>
+          <p class="lede attach-lede">
+            Click once. Prompter reads the code on this computer, then takes you to the prompt
+            screen. Your AI CLI will get a brief grounded in the real files.
+          </p>
+          <button type="button" class="choose-folder" id="btn-attach">
+            <span class="choose-icon" aria-hidden="true">+</span>
+            <span class="choose-label">
+              <strong id="attach-title">Choose project folder</strong>
+              <span class="muted" id="attach-sub">Opens the normal folder picker</span>
+            </span>
+          </button>
+          <p class="field-hint" id="attach-hint"></p>
+          <div class="attach-loading" id="attach-loading" hidden>
+            <div class="spinner" aria-hidden="true"></div>
+            <div>
+              <strong id="attach-loading-title">Reading your project…</strong>
+              <p class="muted" id="attach-loading-sub">Looking through files on this computer. Stay here a moment.</p>
+            </div>
+          </div>
+        </section>
+      </main>
+
+      <!-- WORKSHOP: CLI + direction + prompt -->
+      <main class="stage stage-simple" id="screen-workshop" hidden>
+        <div class="context-banner" id="project-chip" role="status" aria-live="polite">
+          <div class="context-banner-top">
+            <span class="context-banner-badge" id="context-banner-badge">
+              <span class="context-check" aria-hidden="true">✓</span>
+              Project context loaded
+            </span>
+            <span class="context-banner-name" id="project-chip-name">—</span>
+          </div>
+          <div class="context-counters" id="context-counters">
+            <span class="counter" id="counter-files"><strong>0</strong> files</span>
+            <span class="counter" id="counter-tokens"><strong>0</strong> tokens</span>
+            <span class="counter" id="counter-size"><strong>0</strong> size</span>
+            <span class="counter counter-used" id="counter-used" hidden>
+              <strong id="counter-used-n">0</strong> used in last prompt
+            </span>
+          </div>
+          <p class="context-banner-path muted" id="project-chip-path"></p>
+        </div>
+
         <div id="onboarding" class="onboarding" hidden>
           <div>
-            <strong>Click a CLI</strong> that shows Ready, pick what you want done, type a sentence,
-            then <em>Run in Terminal</em>. Prompter builds the prompt and opens that tool for you.
+            <strong>Project is loaded.</strong> Click a Ready CLI, pick what you want done, type a
+            sentence, then <em>Run in Terminal</em>. Prompter looks through your code before building
+            the prompt.
           </div>
           <button type="button" class="ghost" id="btn-dismiss-onboarding">Got it</button>
         </div>
 
-        <!-- 1. Detected agents -->
         <section class="block">
           <h1 class="step-title">
             <span class="step-n">1</span> Your AI CLIs
             <span class="muted step-meta" id="agent-count"></span>
           </h1>
-          <p class="lede tight">
-            Detected on this Mac when you open or refresh the page. Click one to use it.
-          </p>
+          <p class="lede tight">Click one that says Ready.</p>
           <div class="agent-grid" id="agent-grid" role="radiogroup" aria-label="Installed AI CLIs">
             <div class="agent-loading" id="agent-loading">Scanning for grok, codex, claude, gemini, agy…</div>
           </div>
           <p class="field-hint" id="agent-hint"></p>
         </section>
 
-        <!-- 2. Direction -->
         <section class="block">
           <h2 class="step-title"><span class="step-n">2</span> What do you want done?</h2>
           <div class="direction-grid" id="direction-grid" role="radiogroup" aria-label="Direction"></div>
           <p class="field-hint" id="direction-blurb"></p>
         </section>
 
-        <!-- 3. Input + run -->
         <section class="block workspace-simple workspace-run">
           <div class="pane">
             <div class="pane-bar">
@@ -104,7 +153,7 @@
               id="output"
               class="editor out"
               readonly
-              placeholder="After you run, the composed prompt and shell command show here…"
+              placeholder="After you run, the composed prompt shows here. It will include real files from your project."
             ></textarea>
             <div class="pane-bar foot">
               <span id="out-stats" class="stats">-</span>
@@ -126,7 +175,7 @@
           <div class="advanced-body">
             <div class="field">
               <label class="label" for="cwd">Project folder (cwd)</label>
-              <input id="cwd" type="text" placeholder="Leave empty = Prompter server folder; set your repo path" />
+              <input id="cwd" type="text" placeholder="Set automatically from attached project" />
             </div>
             <div class="field">
               <label class="label" for="extra">Extra context</label>

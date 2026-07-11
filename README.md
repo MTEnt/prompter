@@ -1,8 +1,21 @@
 # Prompter
 
-**You type a messy request. Prompter turns it into a good prompt and opens your AI coding tool.**
+**Attach a project on your computer. Pick an AI coding CLI. Type a messy request. Prompter reads your code, writes a solid prompt, and opens the tool for you.**
 
-Works with tools you already have on your computer: Grok, Codex, Claude, Gemini, and similar CLIs.
+Local only. No account. Nothing is uploaded.
+
+Works with tools you already have: Grok, Codex, Claude, Gemini, and similar CLIs.
+
+### What it is
+
+A small localhost workshop for people who use coding agents but do not want to hand-craft prompts:
+
+1. Choose a **project folder** (normal system picker).
+2. Prompter **reads the codebase** on your machine and shows **project context loaded** (file / token counters).
+3. Pick a **Ready** CLI, pick what you want done, type a sentence.
+4. On **Preview** or **Run**, it ranks real files against your request, builds a grounded prompt, and can launch the CLI in that project folder.
+
+Optional: advanced users can polish with a local or API LLM via `.env` (see `.env.example`). Core flow needs no keys.
 
 ---
 
@@ -46,12 +59,13 @@ You skipped step 1. Install Node.js, then try again.
 
 ## What to do in the app
 
-1. **Click an AI tool** that says **Ready** (Prompter finds them on your machine).
-2. **Click what you want** (build a feature, fix a bug, review code, etc.).
-3. **Type your request** in plain English.
-4. Click **Run in Terminal**.
+1. **Choose project folder** (one click, normal folder picker). Wait while Prompter reads the code.
+2. **Click an AI tool** that says **Ready**.
+3. **Click what you want** (build a feature, fix a bug, review code, etc.).
+4. **Type your request** in plain English.
+5. Click **Run in Terminal**.
 
-That is the whole flow.
+Prompter looks through your project files before building the prompt, then opens your CLI in that folder.
 
 - **Preview only** = build the prompt without opening the AI.
 - **Copy** = copy the prompt yourself if you want to paste it somewhere else.
