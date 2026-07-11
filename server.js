@@ -1,0 +1,499 @@
+import http from "node:http";
+import fs from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+import { improvePromptLocal, listCatalog } from "./lib/improver.js";
+import { detectLlmConfig, polishWithLlm } from "./lib/llm-polish.js";
+import {
+  libraryIndex,
+  loadPatterns,
+  getTemplate,
+  searchTemplates,
+  renderTemplate,
+  exportForTool,
+} from "./lib/library.js";
+import { listDirections } from "./lib/directions.js";
+import { composeAndExport } from "./lib/compose.js";
+import {
+  detectAgents,
+  pickAgent,
+  launchAgentInTerminal,
+  buildAgentInvocation,
+} from "./lib/agents.js";
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const PUBLIC = path.join(__dirname, "public");
+const PORT = Number(process.env.PORT) || 3847;
+const HOST = process.env.HOST || "127.0.0.1";
+
+function loadEnvFile() {
+  const envPath = path.join(__dirname, ".env");
+  if (!fs.existsSync(envPath)) return;
+  const text = fs.readFileSync(envPath, "utf8");
+  for (const line of text.split("\n")) {
+    const t = line.trim();
+    if (!t || t.startsWith("#")) continue;
+    const i = t.indexOf("=");
+    if (i === -1) continue;
+    const k = t.slice(0, i).trim();
+    let v = t.slice(i + 1).trim();
+    if (
+      (v.startsWith('"') && v.endsWith('"')) ||
+      (v.startsWith("'") && v.endsWith("'"))
+    ) {
+      v = v.slice(1, -1);
+    }
+    if (!(k in process.env)) process.env[k] = v;
+  }
+}
+loadEnvFile();
+
+const MIME = {
+  ".html": "text/html; charset=utf-8",
+  ".css": "text/css; charset=utf-8",
+  ".js": "text/javascript; charset=utf-8",
+  ".json": "application/json; charset=utf-8",
+  ".svg": "image/svg+xml",
+  ".md": "text/markdown; charset=utf-8",
+  ".ico": "image/x-icon",
+  ".png": "image/png",
+  ".woff2": "font/woff2",
+};
+
+function send(res, status, body, headers = {}) {
+  const data =
+    typeof body === "string" || Buffer.isBuffer(body)
+      ? body
+      : JSON.stringify(body);
+  const isJson = typeof body !== "string" && !Buffer.isBuffer(body);
+  res.writeHead(status, {
+    "Content-Type": isJson
+      ? "application/json; charset=utf-8"
+      : headers["Content-Type"] || "text/plain; charset=utf-8",
+    ...headers,
+  });
+  res.end(data);
+}
+
+function readBody(req) {
+  return new Promise((resolve, reject) => {
+    const chunks = [];
+    req.on("data", (c) => chunks.push(c));
+    req.on("end", () => {
+      const raw = Buffer.concat(chunks).toString("utf8");
+      if (!raw) return resolve({});
+      try {
+        resolve(JSON.parse(raw));
+      } catch {
+        reject(new Error("Invalid JSON body"));
+      }
+    });
+    req.on("error", reject);
+  });
+}
+
+function safeJoin(root, reqPath) {
+  const decoded = decodeURIComponent(reqPath.split("?")[0]);
+  const clean = path.normalize(decoded).replace(/^(\.\.[/\\])+/, "");
+  const full = path.join(root, clean);
+  if (!full.startsWith(root)) return null;
+  return full;
+}
+
+async function handleApi(req, res, url) {
+  if (req.method === "GET" && url.pathname === "/api/health") {
+    const idx = libraryIndex();
+    return send(res, 200, {
+      ok: true,
+      name: "prompter",
+      version: "1.1.0",
+      llm: detectLlmConfig(),
+      library: idx.count,
+    });
+  }
+
+  if (req.method === "GET" && url.pathname === "/api/catalog") {
+    return send(res, 200, {
+      ...listCatalog(),
+      directions: listDirections(),
+      llm: detectLlmConfig(),
+      tools: [
+        "codex",
+        "claude",
+        "grok",
+        "gemini",
+        "cursor",
+        "copilot",
+        "agents_md",
+        "skill",
+        "system",
+        "clipboard",
+        "generic",
+      ],
+    });
+  }
+
+  if (req.method === "GET" && url.pathname === "/api/directions") {
+    return send(res, 200, { directions: listDirections() });
+  }
+
+  if (req.method === "GET" && url.pathname === "/api/agents") {
+    const agents = detectAgents();
+    const pick = pickAgent("auto");
+    return send(res, 200, {
+      ok: true,
+      agents,
+      auto: pick.ok ? pick.agent : null,
+      platform: process.platform,
+    });
+  }
+
+  if (req.method === "POST" && url.pathname === "/api/run") {
+    let body;
+    try {
+      body = await readBody(req);
+    } catch {
+      return send(res, 400, { ok: false, error: "Invalid JSON body" });
+    }
+
+    const input = body.input || body.prompt || "";
+    if (!String(input).trim()) {
+      return send(res, 400, { ok: false, error: "Describe what you need first." });
+    }
+
+    const agentId = body.agent || "auto";
+    const pick = pickAgent(agentId);
+    if (!pick.ok) {
+      return send(res, 400, {
+        ok: false,
+        error: pick.error,
+        agents: pick.detected,
+      });
+    }
+
+    const profile =
+      body.profile ||
+      (pick.agent.id === "agent" ? "grok" : pick.agent.id);
+
+    const composed = composeAndExport({
+      input,
+      directionId: body.direction || "freeform",
+      profileId: profile,
+      tool: body.tool || profile,
+      extraContext: body.extraContext || "",
+      strengthId: body.strength || undefined,
+    });
+    if (!composed.ok) return send(res, 400, composed);
+
+    const promptText = composed.improved;
+    const cwd = body.cwd || process.cwd();
+
+    // Always return shell command; on macOS also open Terminal
+    const inv = buildAgentInvocation(pick.agent.id, promptText, {
+      cwd,
+      headless: Boolean(body.headless),
+      yes: Boolean(body.yes),
+      model: body.model,
+    });
+
+    let launch = null;
+    if (body.launch !== false) {
+      launch = await launchAgentInTerminal(pick.agent.id, promptText, {
+        cwd,
+        headless: Boolean(body.headless),
+        yes: Boolean(body.yes),
+        model: body.model,
+      });
+    }
+
+    return send(res, 200, {
+      ok: true,
+      agent: pick.agent,
+      composed: {
+        text: promptText,
+        meta: composed.meta,
+      },
+      shell: inv.ok ? inv.shell : null,
+      cwd,
+      launch,
+    });
+  }
+
+  if (req.method === "POST" && url.pathname === "/api/compose") {
+    let body;
+    try {
+      body = await readBody(req);
+    } catch {
+      return send(res, 400, { ok: false, error: "Invalid JSON body" });
+    }
+
+    let result = composeAndExport({
+      input: body.input || body.prompt || "",
+      directionId: body.direction || body.directionId || "freeform",
+      profileId: body.profile || body.target || "generic",
+      tool: body.tool || body.profile || body.target || "generic",
+      extraContext: body.extraContext || "",
+      strengthId: body.strength || undefined,
+    });
+
+    if (!result.ok) return send(res, 400, result);
+
+    if (body.useLlm) {
+      const polished = await polishWithLlm({
+        original: result.original,
+        localImproved: result.improved,
+        profileName: body.profile || "generic",
+        taskName: result.meta?.task || "general",
+        strengthName: result.meta?.strength || "medium",
+        providerId: body.llmProvider,
+      });
+      if (polished.ok) {
+        const exported = exportForTool(polished.improved, body.tool || body.profile || "generic", {
+          title: result.meta?.directionLabel || "Prompt",
+        });
+        result = {
+          ...result,
+          improved: polished.improved,
+          text: exported.text,
+          hint: exported.hint,
+          meta: {
+            ...result.meta,
+            mode: `${result.meta.mode}+llm`,
+            llmProvider: polished.provider,
+            llmModel: polished.model,
+          },
+        };
+      } else {
+        result.llmError = polished.error;
+      }
+    }
+
+    return send(res, 200, result);
+  }
+
+  if (req.method === "GET" && url.pathname === "/api/library") {
+    return send(res, 200, libraryIndex());
+  }
+
+  if (req.method === "GET" && url.pathname === "/api/library/search") {
+    const results = searchTemplates(url.searchParams.get("q") || "", {
+      tag: url.searchParams.get("tag") || "",
+      category: url.searchParams.get("category") || "",
+      target: url.searchParams.get("target") || "",
+    });
+    return send(res, 200, {
+      results: results.map((t) => ({
+        id: t.id,
+        title: t.title,
+        description: t.description,
+        category: t.category,
+        tags: t.tags,
+        targets: t.targets,
+        variables: t.variables,
+        defaultTask: t.defaultTask,
+        defaultStrength: t.defaultStrength,
+      })),
+    });
+  }
+
+  if (req.method === "GET" && url.pathname.startsWith("/api/library/templates/")) {
+    const id = decodeURIComponent(url.pathname.replace("/api/library/templates/", ""));
+    const t = getTemplate(id);
+    if (!t) return send(res, 404, { ok: false, error: "Template not found" });
+    return send(res, 200, t);
+  }
+
+  if (req.method === "GET" && url.pathname === "/api/library/patterns") {
+    return send(res, 200, { patterns: loadPatterns() });
+  }
+
+  if (req.method === "POST" && url.pathname === "/api/library/render") {
+    let body;
+    try {
+      body = await readBody(req);
+    } catch {
+      return send(res, 400, { ok: false, error: "Invalid JSON body" });
+    }
+    const t = getTemplate(body.id);
+    if (!t) return send(res, 404, { ok: false, error: "Template not found" });
+    const rendered = renderTemplate(t, body.variables || {});
+    if (!rendered.ok) return send(res, 400, rendered);
+
+    let text = rendered.text;
+    let meta = { mode: "template", templateId: t.id };
+
+    if (body.improve) {
+      const local = improvePromptLocal({
+        prompt: text,
+        profileId: body.target || "generic",
+        taskId: body.task || t.defaultTask,
+        strengthId: body.strength || t.defaultStrength,
+        extraContext: body.extraContext || "",
+      });
+      text = local.improved;
+      meta = { ...local.meta, templateId: t.id, mode: "template+local" };
+    }
+
+    if (body.useLlm) {
+      const polished = await polishWithLlm({
+        original: rendered.text,
+        localImproved: text,
+        profileName: body.target || "generic",
+        taskName: body.task || t.defaultTask,
+        strengthName: body.strength || t.defaultStrength,
+        providerId: body.llmProvider,
+      });
+      if (polished.ok) {
+        text = polished.improved;
+        meta = {
+          ...meta,
+          mode: "template+llm",
+          llmProvider: polished.provider,
+          llmModel: polished.model,
+        };
+      } else {
+        meta.llmError = polished.error;
+      }
+    }
+
+    const exported = exportForTool(text, body.tool || body.target || "generic", {
+      id: t.id,
+      title: t.title,
+      description: t.description,
+    });
+
+    return send(res, 200, {
+      ok: true,
+      text: exported.text,
+      raw: text,
+      hint: exported.hint,
+      meta,
+      template: { id: t.id, title: t.title },
+    });
+  }
+
+  if (req.method === "POST" && url.pathname === "/api/improve") {
+    let body;
+    try {
+      body = await readBody(req);
+    } catch {
+      return send(res, 400, { ok: false, error: "Invalid JSON body" });
+    }
+
+    const local = improvePromptLocal({
+      prompt: body.prompt || "",
+      profileId: body.profile || "generic",
+      taskId: body.task || "general",
+      strengthId: body.strength || "medium",
+      extraContext: body.extraContext || "",
+    });
+
+    if (!local.ok) return send(res, 400, local);
+
+    const useLlm = Boolean(body.useLlm);
+    if (!useLlm) {
+      const exported = exportForTool(local.improved, body.tool || body.profile || "generic", {
+        title: "Improved prompt",
+      });
+      return send(res, 200, { ...local, text: exported.text, hint: exported.hint });
+    }
+
+    const polished = await polishWithLlm({
+      original: local.original,
+      localImproved: local.improved,
+      profileName: local.meta.profileName,
+      taskName: body.task || "general",
+      strengthName: body.strength || "medium",
+      providerId: body.llmProvider || undefined,
+    });
+
+    if (!polished.ok) {
+      return send(res, 200, {
+        ...local,
+        llmError: polished.error,
+        meta: { ...local.meta, mode: "local", llmAttempted: true },
+      });
+    }
+
+    const improved = polished.improved;
+    const exported = exportForTool(improved, body.tool || body.profile || "generic", {
+      title: "Improved prompt",
+    });
+
+    return send(res, 200, {
+      ok: true,
+      improved,
+      text: exported.text,
+      hint: exported.hint,
+      original: local.original,
+      localDraft: local.improved,
+      meta: {
+        ...local.meta,
+        mode: "llm",
+        llmProvider: polished.provider,
+        llmProviderName: polished.providerName,
+        llmModel: polished.model,
+        charCount: {
+          in: local.original.length,
+          out: improved.length,
+        },
+        wordCount: {
+          in: local.original.split(/\s+/).filter(Boolean).length,
+          out: improved.split(/\s+/).filter(Boolean).length,
+        },
+      },
+    });
+  }
+
+  return send(res, 404, { ok: false, error: "Not found" });
+}
+
+const server = http.createServer(async (req, res) => {
+  const url = new URL(req.url || "/", `http://${req.headers.host}`);
+
+  try {
+    if (url.pathname.startsWith("/api/")) {
+      return await handleApi(req, res, url);
+    }
+
+    let filePath = safeJoin(
+      PUBLIC,
+      url.pathname === "/" ? "/index.html" : url.pathname
+    );
+    if (!filePath) {
+      res.writeHead(403);
+      return res.end("Forbidden");
+    }
+
+    if (!fs.existsSync(filePath) || fs.statSync(filePath).isDirectory()) {
+      filePath = path.join(PUBLIC, "index.html");
+    }
+
+    const ext = path.extname(filePath);
+    const type = MIME[ext] || "application/octet-stream";
+    res.writeHead(200, { "Content-Type": type, "Cache-Control": "no-cache" });
+    fs.createReadStream(filePath).pipe(res);
+  } catch (err) {
+    console.error(err);
+    send(res, 500, { ok: false, error: err.message || "Server error" });
+  }
+});
+
+// Avoid double-listen when imported from CLI
+if (!server.listening) {
+  server.listen(PORT, HOST, () => {
+    const llm = detectLlmConfig();
+    const idx = libraryIndex();
+    console.log(`\n  Prompter is live`);
+    console.log(`  → http://${HOST}:${PORT}`);
+    console.log(`  Library: ${idx.count.templates} templates · ${idx.count.patterns} patterns`);
+    console.log(
+      llm.available
+        ? `  LLM polish: ${llm.name} (${llm.model})`
+        : `  LLM polish: off (local rewrite only)`
+    );
+    console.log(`  CLI: node bin/prompter.js list\n`);
+  });
+}
+
+export { server };

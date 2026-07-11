@@ -1,0 +1,32 @@
+{
+  "name": "prompter",
+  "version": "1.1.0",
+  "description": "Multi-tool prompt library, improver, CLI, and localhost workshop for Codex, Claude, Grok, Gemini, Cursor, Copilot",
+  "type": "module",
+  "main": "server.js",
+  "bin": {
+    "prompter": "./bin/prompter.js"
+  },
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node --watch server.js",
+    "cli": "node bin/prompter.js",
+    "doctor": "node bin/prompter.js doctor",
+    "agents": "node bin/prompter.js agents",
+    "list": "node bin/prompter.js list"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "keywords": [
+    "prompts",
+    "prompt-engineering",
+    "codex",
+    "claude",
+    "grok",
+    "gemini",
+    "cli",
+    "agents"
+  ],
+  "license": "MIT"
+}

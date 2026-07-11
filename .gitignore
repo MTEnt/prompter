@@ -1,0 +1,39 @@
+# Dependencies
+node_modules/
+
+# Secrets & local env (never commit)
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+id_rsa*
+id_ed25519*
+credentials*
+*secret*
+auth.json
+
+# Logs & OS junk
+*.log
+npm-debug.log*
+.DS_Store
+Thumbs.db
+*.swp
+*~
+
+# Runtime / local state
+.prompter/
+tmp/
+temp/
+*.local
+.cache/
+
+# Editor
+.idea/
+.vscode/
+*.code-workspace
+
+# Optional package lock if you prefer not to pin (keep lock if you want reproducible installs)
+# package-lock.json

@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Prompter</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&family=Sora:wght@400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="/styles.css" />
+    <link
+      rel="icon"
+      href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%230b0d10'/%3E%3Cpath d='M8 22V10h3.2l4.1 7.6L19.4 10H22.6v12h-2.6v-7.2L16.1 22h-2.2l-3.9-7.2V22H8z' fill='%2334f5c5'/%3E%3C/svg%3E"
+    />
+  </head>
+  <body>
+    <div class="app app-simple">
+      <header class="topbar">
+        <div class="rail-brand">
+          <span class="logo" aria-hidden="true">P</span>
+          <div>
+            <div class="logo-name">Prompter</div>
+            <div class="logo-sub">pick CLI → direction → run</div>
+          </div>
+        </div>
+        <div class="topbar-meta">
+          <button type="button" class="ghost" id="btn-rescan" title="Re-scan installed CLIs">
+            Rescan CLIs
+          </button>
+          <span id="agent-status" class="status-v">Checking CLIs…</span>
+        </div>
+      </header>
+
+      <main class="stage stage-simple">
+        <div id="onboarding" class="onboarding" hidden>
+          <div>
+            <strong>Click a CLI</strong> that shows Ready, pick what you want done, type a sentence,
+            then <em>Run in Terminal</em>. Prompter builds the prompt and opens that tool for you.
+          </div>
+          <button type="button" class="ghost" id="btn-dismiss-onboarding">Got it</button>
+        </div>
+
+        <!-- 1. Detected agents -->
+        <section class="block">
+          <h1 class="step-title">
+            <span class="step-n">1</span> Your AI CLIs
+            <span class="muted step-meta" id="agent-count"></span>
+          </h1>
+          <p class="lede tight">
+            Detected on this Mac when you open or refresh the page. Click one to use it.
+          </p>
+          <div class="agent-grid" id="agent-grid" role="radiogroup" aria-label="Installed AI CLIs">
+            <div class="agent-loading" id="agent-loading">Scanning for grok, codex, claude, gemini, agy…</div>
+          </div>
+          <p class="field-hint" id="agent-hint"></p>
+        </section>
+
+        <!-- 2. Direction -->
+        <section class="block">
+          <h2 class="step-title"><span class="step-n">2</span> What do you want done?</h2>
+          <div class="direction-grid" id="direction-grid" role="radiogroup" aria-label="Direction"></div>
+          <p class="field-hint" id="direction-blurb"></p>
+        </section>
+
+        <!-- 3. Input + run -->
+        <section class="block workspace-simple workspace-run">
+          <div class="pane">
+            <div class="pane-bar">
+              <h2 id="input-label">Describe the task</h2>
+              <div class="actions">
+                <button type="button" class="ghost" id="btn-paste">Paste</button>
+                <button type="button" class="ghost" id="btn-sample">Example</button>
+              </div>
+            </div>
+            <textarea id="input" class="editor" placeholder="" spellcheck="true"></textarea>
+            <div class="pane-bar foot run-foot">
+              <span id="in-stats" class="stats">0 words</span>
+              <div class="run-actions">
+                <button type="button" class="ghost" id="btn-improve" title="Build prompt only">
+                  <span class="btn-label-preview">Preview only</span>
+                </button>
+                <button type="button" class="primary" id="btn-run">
+                  <span class="btn-label">Run in Terminal</span>
+                  <kbd>⌘↵</kbd>
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <div class="split" aria-hidden="true"></div>
+
+          <div class="pane out-pane">
+            <div class="pane-bar">
+              <h2>Prompt sent to CLI</h2>
+              <div class="actions">
+                <button type="button" class="ghost" id="btn-copy" disabled>Copy prompt</button>
+                <button type="button" class="ghost" id="btn-copy-cmd" disabled>Copy command</button>
+              </div>
+            </div>
+            <textarea
+              id="output"
+              class="editor out"
+              readonly
+              placeholder="After you run, the composed prompt and shell command show here…"
+            ></textarea>
+            <div class="pane-bar foot">
+              <span id="out-stats" class="stats">—</span>
+              <span id="mode-pill" class="pill hidden"></span>
+            </div>
+          </div>
+        </section>
+
+        <div id="launch-banner" class="launch-banner" hidden>
+          <div>
+            <strong id="launch-title">Terminal opening…</strong>
+            <p class="field-hint" id="launch-detail"></p>
+            <code class="launch-cmd" id="launch-cmd"></code>
+          </div>
+        </div>
+
+        <details class="advanced">
+          <summary>Optional settings</summary>
+          <div class="advanced-body">
+            <div class="field">
+              <label class="label" for="cwd">Project folder (cwd)</label>
+              <input id="cwd" type="text" placeholder="Leave empty = Prompter server folder; set your repo path" />
+            </div>
+            <div class="field">
+              <label class="label" for="extra">Extra context</label>
+              <input id="extra" type="text" placeholder="Stack notes, constraints…" />
+            </div>
+            <div class="row-2">
+              <div class="field">
+                <label class="label" for="strength">Thoroughness</label>
+                <select id="strength">
+                  <option value="">Direction default</option>
+                  <option value="light">Light</option>
+                  <option value="medium">Balanced</option>
+                  <option value="strong">Thorough</option>
+                </select>
+              </div>
+              <div class="field">
+                <label class="label" for="export-tool">Special format</label>
+                <select id="export-tool"></select>
+              </div>
+            </div>
+            <label class="toggle">
+              <input type="checkbox" id="auto-copy" checked />
+              <span>Auto-copy prompt when running</span>
+            </label>
+            <label class="toggle">
+              <input type="checkbox" id="use-llm" />
+              <span>LLM polish first <span class="muted" id="llm-hint"></span></span>
+            </label>
+            <select id="task" hidden></select>
+            <button type="button" class="ghost" id="btn-use-as-input" hidden>Edit again</button>
+          </div>
+        </details>
+
+        <section class="history-block" aria-label="History">
+          <div class="block-head">
+            <h2>Recent</h2>
+            <div class="actions">
+              <span class="muted" id="history-count">0</span>
+              <button type="button" class="ghost" id="btn-clear-history">Clear</button>
+            </div>
+          </div>
+          <ul id="history" class="history"></ul>
+        </section>
+      </main>
+    </div>
+
+    <div hidden>
+      <span id="lib-badge"></span>
+      <span id="llm-badge"></span>
+      <span id="lib-count"></span>
+      <ul id="lib-list"></ul>
+      <div id="lib-detail"></div>
+      <input id="lib-search" />
+      <select id="lib-category"></select>
+      <select id="lib-target"></select>
+      <div id="pattern-grid"></div>
+      <div id="profile-chips"></div>
+      <div id="tab-workshop" class="tab-panel active"></div>
+      <div id="tab-library" class="tab-panel"></div>
+      <div id="tab-patterns" class="tab-panel"></div>
+    </div>
+
+    <div id="toast" class="toast" role="status" aria-live="polite"></div>
+    <script type="module" src="/app.js"></script>
+  </body>
+</html>
