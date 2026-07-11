@@ -23,7 +23,7 @@
           <span class="logo" aria-hidden="true">P</span>
           <div>
             <div class="logo-name">Prompter</div>
-            <div class="logo-sub" id="logo-sub">attach project → prompt → run</div>
+            <div class="logo-sub" id="logo-sub">attach project, then prompt</div>
           </div>
         </div>
         <div class="topbar-meta">
@@ -34,10 +34,10 @@
           <button type="button" class="ghost" id="btn-change-project" hidden title="Attach a different folder">
             Change project
           </button>
-          <button type="button" class="ghost" id="btn-rescan" title="Re-scan installed CLIs" hidden>
-            Rescan CLIs
+          <button type="button" class="ghost" id="btn-rescan" title="Re-scan coding apps" hidden>
+            Rescan apps
           </button>
-          <span id="agent-status" class="status-v" hidden>Checking CLIs…</span>
+          <span id="agent-status" class="status-v" hidden>Checking apps…</span>
         </div>
       </header>
 
@@ -47,7 +47,8 @@
           <h1 class="attach-title">Open a project</h1>
           <p class="lede attach-lede">
             Click once. Prompter reads the code on this computer, then takes you to the prompt
-            screen. Your AI CLI will get a brief grounded in the real files.
+            screen. You will need a coding AI app installed (Claude Code, Codex, Grok Build, or
+            Gemini CLI). Browser-only ChatGPT cannot be opened from here.
           </p>
           <button type="button" class="choose-folder" id="btn-attach">
             <span class="choose-icon" aria-hidden="true">+</span>
@@ -78,31 +79,35 @@
             <span class="context-banner-name" id="project-chip-name">—</span>
           </div>
           <div class="context-counters" id="context-counters">
-            <span class="counter" id="counter-files"><strong>0</strong> files</span>
-            <span class="counter" id="counter-tokens"><strong>0</strong> tokens</span>
-            <span class="counter" id="counter-size"><strong>0</strong> size</span>
+            <span class="counter" id="counter-files"><strong>0</strong> indexed</span>
+            <span class="counter" id="counter-tokens"><strong>0</strong> index size</span>
+            <span class="counter" id="counter-size"><strong>0</strong> on disk</span>
             <span class="counter counter-used" id="counter-used" hidden>
               <strong id="counter-used-n">0</strong> used in last prompt
             </span>
+            <span class="counter counter-used" id="counter-prompt" hidden>
+              <strong>0</strong> in last prompt
+            </span>
           </div>
           <p class="context-banner-path muted" id="project-chip-path"></p>
+          <div class="evidence-list" id="evidence-list" hidden></div>
         </div>
 
         <div id="onboarding" class="onboarding" hidden>
           <div>
-            <strong>Project is loaded.</strong> Click a Ready CLI, pick what you want done, type a
-            sentence, then <em>Run in Terminal</em>. Prompter looks through your code before building
-            the prompt.
+            <strong>Project context loaded.</strong> Click an installed coding app, pick what you
+            want done, type a sentence, then <em>Run in Terminal</em>. Prompter ranks real files
+            before building the prompt.
           </div>
           <button type="button" class="ghost" id="btn-dismiss-onboarding">Got it</button>
         </div>
 
         <section class="block">
           <h1 class="step-title">
-            <span class="step-n">1</span> Your AI CLIs
+            <span class="step-n">1</span> Your coding AI apps
             <span class="muted step-meta" id="agent-count"></span>
           </h1>
-          <p class="lede tight">Click one that says Ready.</p>
+          <p class="lede tight">Click one that says Installed.</p>
           <div class="agent-grid" id="agent-grid" role="radiogroup" aria-label="Installed AI CLIs">
             <div class="agent-loading" id="agent-loading">Scanning for grok, codex, claude, gemini, agy…</div>
           </div>
@@ -118,7 +123,7 @@
         <section class="block workspace-simple workspace-run">
           <div class="pane">
             <div class="pane-bar">
-              <h2 id="input-label">Describe the task</h2>
+              <h2 id="input-label"><span class="step-n inline">3</span> Describe the task</h2>
               <div class="actions">
                 <button type="button" class="ghost" id="btn-paste">Paste</button>
                 <button type="button" class="ghost" id="btn-sample">Example</button>
@@ -128,12 +133,12 @@
             <div class="pane-bar foot run-foot">
               <span id="in-stats" class="stats">0 words</span>
               <div class="run-actions">
-                <button type="button" class="ghost" id="btn-improve" title="Build prompt only">
-                  <span class="btn-label-preview">Preview only</span>
+                <button type="button" class="ghost" id="btn-improve" title="Build prompt without opening the AI">
+                  <span class="btn-label-preview">Show prompt</span>
                 </button>
                 <button type="button" class="primary" id="btn-run">
                   <span class="btn-label">Run in Terminal</span>
-                  <kbd>⌘↵</kbd>
+                  <kbd id="run-kbd">⌘↵</kbd>
                 </button>
               </div>
             </div>
@@ -143,7 +148,7 @@
 
           <div class="pane out-pane">
             <div class="pane-bar">
-              <h2>Prompt sent to CLI</h2>
+              <h2>Prompt ready for your AI</h2>
               <div class="actions">
                 <button type="button" class="ghost" id="btn-copy" disabled>Copy prompt</button>
                 <button type="button" class="ghost" id="btn-copy-cmd" disabled>Copy command</button>
@@ -174,8 +179,8 @@
           <summary>Optional settings</summary>
           <div class="advanced-body">
             <div class="field">
-              <label class="label" for="cwd">Project folder (cwd)</label>
-              <input id="cwd" type="text" placeholder="Set automatically from attached project" />
+              <label class="label" for="cwd">Folder the AI opens in</label>
+              <input id="cwd" type="text" readonly placeholder="Set from attached project" />
             </div>
             <div class="field">
               <label class="label" for="extra">Extra context</label>
@@ -197,12 +202,12 @@
               </div>
             </div>
             <label class="toggle">
-              <input type="checkbox" id="auto-copy" checked />
-              <span>Auto-copy prompt when running</span>
+              <input type="checkbox" id="auto-copy" />
+              <span>Also copy prompt when running</span>
             </label>
             <label class="toggle">
               <input type="checkbox" id="use-llm" />
-              <span>LLM polish first <span class="muted" id="llm-hint"></span></span>
+              <span>Extra AI rewrite first <span class="muted" id="llm-hint"></span></span>
             </label>
             <select id="task" hidden></select>
             <button type="button" class="ghost" id="btn-use-as-input" hidden>Edit again</button>
