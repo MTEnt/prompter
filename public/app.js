@@ -46,7 +46,19 @@ async function api(path, opts = {}) {
   }
   if (res.status === 401) {
     state.token = null;
-    throw new Error("Session expired. Refresh the page.");
+    try {
+      await ensureSession();
+      headers.Authorization = `Bearer ${state.token}`;
+      headers["X-Prompter-Token"] = state.token;
+      const retry = await fetch(path, { ...opts, headers });
+      data = await retry.json().catch(() => ({ ok: false }));
+      if (retry.status !== 401) {
+        return { res: retry, data };
+      }
+    } catch {
+      /* fall through */
+    }
+    throw new Error("Prompter restarted. Choose your project folder again.");
   }
   if (res.status === 409 || data.code === "PROJECT_GONE" || data.code === "PROJECT_REQUIRED") {
     state.projectId = null;
@@ -212,10 +224,10 @@ function renderAgents() {
     btn.dataset.id = a.id;
     btn.setAttribute("role", "radio");
     btn.setAttribute("aria-checked", a.id === state.agentId ? "true" : "false");
+    const selected = a.id === state.agentId;
     btn.innerHTML = `
-      <span class="agent-ready">Installed</span>
+      <span class="agent-ready">${selected ? "Selected" : "Ready"}</span>
       <span class="agent-name">${escapeHtml(a.name)}</span>
-      <span class="agent-id">${escapeHtml(a.id)}</span>
       <span class="agent-path" title="${escapeHtml(a.path)}">${escapeHtml(shortPath(a.path))}</span>
     `;
     btn.addEventListener("click", () => selectAgent(a.id));
@@ -246,14 +258,16 @@ function selectAgent(id) {
   document.querySelectorAll(".agent-card").forEach((el) => {
     el.setAttribute("aria-checked", el.dataset.id === id ? "true" : "false");
   });
-  $("agent-status").textContent = `Using ${id}`;
+  const sel = state.agents.find((a) => a.id === id);
+  $("agent-status").textContent = `Using ${sel?.name || id}`;
   $("agent-status").classList.add("on");
   const exp = $("export-tool");
   const profile = profileForAgent(id);
   if (exp && [...exp.options].some((o) => o.value === profile)) {
     exp.value = profile;
   }
-  $("agent-hint").textContent = `Selected ${id}. Type your task, then Run.`;
+  $("agent-hint").textContent = `Selected ${sel?.name || id}. Type your task, then Run.`;
+  renderAgents();
 }
 
 function renderDirections() {
@@ -398,14 +412,33 @@ function showWorkshopScreen() {
   updateProjectContextUI();
 }
 
+function humanReason(r) {
+  const s = String(r || "");
+  if (s.startsWith("name~") || s.startsWith("path~")) return "Matched your task words";
+  if (s.startsWith("body")) return "Found in file text";
+  if (s.includes("entry")) return "Likely project entry file";
+  if (s.includes("exact path")) return "Path you mentioned";
+  if (s.includes("always include")) return "Project metadata";
+  if (s.includes("fallback")) return "Default pick";
+  return "Related to your task";
+}
+
 function updateProjectContextUI(meta) {
   const p = state.project;
   const status = $("context-status");
   const usedEl = $("counter-used");
   const evidenceEl = $("evidence-list");
+  const promptEl = $("counter-prompt");
+
+  if (usedEl) usedEl.hidden = true;
+  if (promptEl) promptEl.hidden = true;
+  if (evidenceEl) {
+    evidenceEl.hidden = true;
+    evidenceEl.innerHTML = "";
+  }
 
   if (!p) {
-    status.hidden = true;
+    if (status) status.hidden = true;
     return;
   }
 
@@ -427,32 +460,38 @@ function updateProjectContextUI(meta) {
     usedEl.hidden = false;
     $("counter-used-n").textContent = String(usedFiles.length);
   }
-  if (promptTokens != null && $("counter-prompt")) {
-    $("counter-prompt").hidden = false;
-    $("counter-prompt").innerHTML = `<strong>~${formatTokens(promptTokens)}</strong> in last prompt`;
+  if (promptTokens != null && promptEl) {
+    promptEl.hidden = false;
+    promptEl.innerHTML = `<strong>~${formatTokens(promptTokens)}</strong> in last prompt`;
   }
 
   if (evidenceEl) {
     const ev = meta?.evidence || state.lastEvidence;
     if (Array.isArray(ev) && ev.length && typeof ev[0] === "object") {
       evidenceEl.hidden = false;
+      const show = ev.slice(0, 8);
+      const more = ev.length - show.length;
       evidenceEl.innerHTML =
         `<div class="evidence-title">Files used for last prompt</div>` +
-        ev
+        show
           .map(
             (e) =>
               `<div class="evidence-row"><code>${escapeHtml(e.path)}</code>` +
               (e.reasons?.length
-                ? `<span class="muted"> ${escapeHtml(e.reasons.slice(0, 2).join("; "))}</span>`
+                ? `<span class="muted"> ${escapeHtml(humanReason(e.reasons[0]))}</span>`
                 : "") +
               `</div>`
           )
-          .join("");
+          .join("") +
+        (more > 0 ? `<div class="evidence-row muted">+${more} more</div>` : "");
     } else if (Array.isArray(usedFiles) && usedFiles.length && typeof usedFiles[0] === "string") {
       evidenceEl.hidden = false;
       evidenceEl.innerHTML =
         `<div class="evidence-title">Files used for last prompt</div>` +
-        usedFiles.map((p) => `<div class="evidence-row"><code>${escapeHtml(p)}</code></div>`).join("");
+        usedFiles
+          .slice(0, 8)
+          .map((p) => `<div class="evidence-row"><code>${escapeHtml(p)}</code></div>`)
+          .join("");
     }
   }
 
@@ -599,7 +638,8 @@ function setupWorkshopHandlers() {
     if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
       if ($("screen-workshop").hidden) return;
       e.preventDefault();
-      runInTerminal();
+      if (!state.agentId || $("btn-run")?.disabled) previewOnly();
+      else runInTerminal();
     }
   });
 }
@@ -628,8 +668,10 @@ async function previewOnly() {
     toast("Attach a project first", true);
     return;
   }
-  const label = $("btn-improve")?.querySelector(".btn-label-preview");
+  const btnImp = $("btn-improve");
+  const label = btnImp?.querySelector(".btn-label-preview");
   if (label) label.textContent = "Reading code…";
+  if (btnImp) btnImp.disabled = true;
   try {
     const { data } = await api("/api/compose", {
       method: "POST",
@@ -643,6 +685,8 @@ async function previewOnly() {
     const text = data.text || data.improved;
     $("output").value = text;
     $("btn-copy").disabled = false;
+    const outTitle = document.querySelector(".out-pane .pane-bar h2");
+    if (outTitle) outTitle.textContent = "Prompt ready for your AI";
     updateOutStats({
       agent: state.agentId,
       directionLabel: data.meta?.directionLabel,
@@ -650,6 +694,16 @@ async function previewOnly() {
     state.lastEvidence = data.meta?.evidence || data.meta?.projectFiles || [];
     state.lastPromptTokens = data.meta?.promptTokens ?? null;
     updateProjectContextUI(data.meta);
+    pushHistory({
+      input,
+      improved: text,
+      shell: "",
+      agent: state.agentId || "copy",
+      agentId: state.agentId,
+      direction: data.meta?.directionLabel,
+      directionId: state.direction,
+    });
+    $("output")?.scrollIntoView({ block: "nearest", behavior: "smooth" });
     if ($("auto-copy").checked) {
       try {
         await navigator.clipboard.writeText(text);
@@ -672,6 +726,7 @@ async function previewOnly() {
     toast(e.message || "Prompter stopped. Open Start Prompter again.", true);
   } finally {
     if (label) label.textContent = "Show prompt";
+    if (btnImp) btnImp.disabled = false;
   }
 }
 
