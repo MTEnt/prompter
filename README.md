@@ -1,49 +1,71 @@
 # Prompter
 
-Turn a rough idea into a solid prompt, then run it in Grok / Codex / Claude / Gemini.
+**You type a messy request. Prompter turns it into a good prompt and opens your AI coding tool.**
 
-## Start the app
+Works with tools you already have on your computer — like Grok, Codex, Claude, or Gemini.
 
-1. Install [Node.js](https://nodejs.org) (LTS) if you don’t have it.
-2. **Double-click:**
+---
 
-| Your computer | Click this |
-|---------------|------------|
-| **Mac** | `Start Prompter.command` |
-| **Windows** | `Start Prompter.bat` |
-| **Linux** | `start-prompter.sh` |
+## How to open it
 
-3. Your browser opens to **http://127.0.0.1:3847**
-4. Leave the terminal window open. Close it to stop Prompter.
+### 1. Install Node.js (one time)
 
-That’s it.
+If you don’t have it yet: [nodejs.org](https://nodejs.org) → download **LTS** → install like any normal app.
 
-### First time on Mac
+### 2. Start Prompter
 
-If double-click says the file can’t be opened:
+Download or clone this folder, then **double-click** the file for your computer:
 
-1. Right-click `Start Prompter.command` → **Open**
-2. Or in Terminal once: `chmod +x "Start Prompter.command" start-prompter.sh`
+| Mac | Windows | Linux |
+|-----|---------|--------|
+| `Start Prompter.command` | `Start Prompter.bat` | `start-prompter.sh` |
 
-### First time on Linux
+A black window will open. **Leave it open.**  
+Your browser should go to: **http://127.0.0.1:3847**
+
+To quit: close that black window.
+
+---
+
+### If double-click doesn’t work
+
+**Mac**  
+Right-click `Start Prompter.command` → **Open** → confirm.
+
+**Linux** (once in a terminal, inside this folder):
 
 ```bash
 chmod +x start-prompter.sh
 ./start-prompter.sh
 ```
 
-## Use it
+**“Node is not installed”**  
+You skipped step 1. Install Node.js, then try again.
 
-1. Click a **Ready** AI CLI (detected on your machine)
-2. Pick what you’re trying to do
-3. Type the task in plain English
-4. **Run in Terminal** (or Preview only)
+---
 
-## Privacy
+## What to do in the app
 
-- Runs on your computer only
-- Don’t commit a `.env` file if you add API keys (see `.env.example`)
+1. **Click an AI tool** that says **Ready** (Prompter finds them on your machine).
+2. **Click what you want** — build a feature, fix a bug, review code, etc.
+3. **Type your request** in plain English.
+4. Click **Run in Terminal**.
+
+That’s the whole flow.
+
+- **Preview only** = build the prompt without opening the AI.  
+- **Copy** = copy the prompt yourself if you want to paste it somewhere else.
+
+---
+
+## Notes
+
+- Prompter runs **on your computer**. It doesn’t need an account.
+- You need at least one AI coding app installed and set up (Grok, Codex, Claude Code, Gemini CLI, etc.) for “Run in Terminal” to do anything useful.
+- Optional: advanced users can add a `.env` file for extra features (see `.env.example`). Don’t upload that file if it has secret keys.
+
+---
 
 ## License
 
-MIT
+MIT — free to use.
