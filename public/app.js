@@ -13,14 +13,14 @@ const state = {
 const SAMPLES = {
   freeform: `hey can you look at my project and make the homepage better? fonts and layout feel off.`,
   implement: `Add a dark mode toggle on the settings page that persists in localStorage`,
-  review: `src/auth/ — especially session cookies and the OAuth callback`,
+  review: `src/auth/: especially session cookies and the OAuth callback`,
   debug: `Checkout fails only on Safari when the cart has a discount code`,
   "fix-error": `TypeError: Cannot read properties of undefined (reading 'id')\n    at Checkout.tsx:88`,
   tests: `the payment webhook handler and retry logic`,
   refactor: `Extract billing logic out of app.js into a small module without behavior change`,
   explain: `how authentication sessions work in this repo`,
-  ui: `homepage hero and pricing section — too generic, needs stronger hierarchy`,
-  landing: `Prompter — local tool that rewrites prompts for coding agents`,
+  ui: `homepage hero and pricing section: too generic, needs stronger hierarchy`,
+  landing: `Prompter: local tool that rewrites prompts for coding agents`,
   docs: `how to run Prompter CLI and copy a prompt into Codex`,
   research: `best QLoRA settings for 7B models on a 24GB GPU`,
   train: `Qwen2.5-7B-Instruct on data/training/sft.jsonl using QLoRA`,
@@ -84,7 +84,7 @@ function updateInStats() {
 function updateOutStats(meta) {
   const t = $("output").value;
   if (!t) {
-    $("out-stats").textContent = "—";
+    $("out-stats").textContent = "-";
     $("mode-pill").classList.add("hidden");
     return;
   }
@@ -133,7 +133,7 @@ function renderAgents() {
     ready.length > 0 ? `${ready.length} ready` : "none found";
   $("agent-status").textContent =
     ready.length > 0
-      ? `Using ${state.agentId || "—"}`
+      ? `Using ${state.agentId || "-"}`
       : "No CLIs found";
   $("agent-status").classList.toggle("on", ready.length > 0);
 
@@ -174,7 +174,7 @@ function renderAgents() {
 
   const sel = state.agents.find((a) => a.id === state.agentId && a.available);
   $("agent-hint").textContent = sel
-    ? `Selected ${sel.name} — prompts will be shaped for this tool, then opened in Terminal.`
+    ? `Selected ${sel.name}. Prompts will be shaped for this tool, then opened in Terminal.`
     : "Click a Ready CLI above.";
 }
 
@@ -196,7 +196,7 @@ function selectAgent(id) {
   if (exp && [...exp.options].some((o) => o.value === profile)) {
     exp.value = profile;
   }
-  $("agent-hint").textContent = `Selected ${id} — hit Run in Terminal when ready.`;
+  $("agent-hint").textContent = `Selected ${id}. Hit Run in Terminal when ready.`;
 }
 
 function renderDirections() {
@@ -312,11 +312,11 @@ async function scanAgents() {
     if (state.agentId) selectAgent(state.agentId);
     toast(
       state.agentId
-        ? `Found CLIs — selected ${state.agentId}`
+        ? `Found CLIs. Selected ${state.agentId}`
         : "No CLIs detected"
     );
   } catch (err) {
-    $("agent-grid").innerHTML = `<div class="agent-empty">Could not scan — is the server running? (${escapeHtml(err.message)})</div>`;
+    $("agent-grid").innerHTML = `<div class="agent-empty">Could not scan. Is the server running? (${escapeHtml(err.message)})</div>`;
     $("agent-status").textContent = "Scan failed";
     toast("Agent scan failed", true);
   }
@@ -462,10 +462,10 @@ async function runInTerminal() {
     toast(
       data.launch?.launched === "terminal"
         ? `Terminal → ${data.agent?.id}`
-        : "Command ready — copy it if Terminal didn’t open"
+        : "Command ready. Copy it if Terminal didn’t open"
     );
   } catch (e) {
-    toast(e.message || "Server offline — npm start?", true);
+    toast(e.message || "Server offline. Try npm start.", true);
   } finally {
     btn.disabled = false;
     if (label) label.textContent = "Run in Terminal";
@@ -552,5 +552,5 @@ async function init() {
 
 init().catch((err) => {
   console.error(err);
-  toast("Load failed — run npm start", true);
+  toast("Load failed. Run npm start.", true);
 });

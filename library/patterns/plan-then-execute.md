@@ -9,7 +9,7 @@ tags: [pattern, agents, coding]
 
 1. **Restate goal** in one sentence.
 2. **List files** you will touch (or discover first).
-3. **Ordered steps** (3–7 bullets).
+3. **Ordered steps** (3-7 bullets).
 4. **Risks / open questions**.
 5. Only then **implement**.
 

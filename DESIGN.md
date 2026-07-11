@@ -1,4 +1,4 @@
-# DESIGN.md — Prompter
+# DESIGN.md - Prompter
 
 ## Visual thesis
 
@@ -15,12 +15,12 @@ Cool ink **product tool** (not a marketing page): a dense dual-pane workshop tha
 | muted | `#8b939f` | Secondary |
 | accent | `#34f5c5` | Primary action / selection only |
 
-No warm amber/cream “AI workshop” palette. No purple gradients.
+No warm amber/cream "AI workshop" palette. No purple gradients.
 
 ## Typography
 
-- **Sora** — UI (single family, product scale)
-- **JetBrains Mono** — prompt editors only
+- **Sora** - UI (single family, product scale)
+- **JetBrains Mono** - prompt editors only
 
 ## Layout
 
@@ -30,7 +30,7 @@ No warm amber/cream “AI workshop” palette. No purple gradients.
 
 ## Motion
 
-- 150–250ms ease on tabs/toasts
+- 150-250ms ease on tabs/toasts
 - `prefers-reduced-motion` respected
 
 ## Anti-patterns rejected

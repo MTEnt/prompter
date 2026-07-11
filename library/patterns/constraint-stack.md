@@ -15,4 +15,4 @@ Order matters:
 4. **Format** (how to respond)  
 5. **Done checks**
 
-Hard constraints beat preferences when they conflict—say so explicitly.
+Hard constraints beat preferences when they conflict. Say so explicitly.

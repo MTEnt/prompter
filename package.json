@@ -1,7 +1,7 @@
 {
   "name": "prompter",
   "version": "1.1.0",
-  "description": "Multi-tool prompt library, improver, CLI, and localhost workshop for Codex, Claude, Grok, Gemini, Cursor, Copilot",
+  "description": "Local workshop and CLI that rewrites rough requests into solid prompts for coding agents",
   "type": "module",
   "main": "server.js",
   "bin": {

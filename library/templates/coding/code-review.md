@@ -21,7 +21,7 @@ source: Prompter original (inspired by security-review culture)
 Review {{scope}} for {{focus}}.
 
 ## Output format
-1. **Summary** (3–6 lines)
+1. **Summary** (3-6 lines)
 2. **Findings** ordered by severity: `blocker` | `major` | `minor` | `nit`
    - For each: location, issue, why it matters, concrete fix
 3. **Questions / assumptions**
@@ -31,4 +31,4 @@ Review {{scope}} for {{focus}}.
 - Prefer evidence from the actual code; do not invent files.
 - Call out OWASP-style issues when relevant (injection, authz, secrets, unsafe defaults).
 - Separate style nits from real defects.
-- If something looks fine, say what you checked—not empty praise.
+- If something looks fine, say what you checked. Not empty praise.
