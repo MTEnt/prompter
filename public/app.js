@@ -53,13 +53,21 @@ async function api(path, opts = {}) {
       headers["X-Prompter-Token"] = state.token;
       const retry = await fetch(path, { ...opts, headers });
       data = await retry.json().catch(() => ({ ok: false }));
-      if (retry.status !== 401) {
-        return { res: retry, data };
+      if (retry.status === 401) {
+        throw new Error("Prompter restarted. Choose your project folder again.");
       }
-    } catch {
-      /* fall through */
+      // fall through to 409 handling with retried data
+      if (retry.status === 409 || data.code === "PROJECT_GONE" || data.code === "PROJECT_REQUIRED") {
+        state.projectId = null;
+        state.project = null;
+        showAttachScreen();
+        throw new Error(data.error || "Choose your project folder again.");
+      }
+      return { res: retry, data };
+    } catch (e) {
+      if (e.message?.includes("Choose your project") || e.message?.includes("restarted")) throw e;
+      throw new Error("Prompter restarted. Choose your project folder again.");
     }
-    throw new Error("Prompter restarted. Choose your project folder again.");
   }
   if (res.status === 409 || data.code === "PROJECT_GONE" || data.code === "PROJECT_REQUIRED") {
     state.projectId = null;

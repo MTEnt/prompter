@@ -13,9 +13,20 @@ A small localhost workshop for people who use coding agents but do not want to h
 1. Choose a **project folder** (normal system picker).
 2. Prompter **reads the codebase** on your machine and shows **project context loaded** (file / token counters).
 3. Pick a **Ready** CLI, pick what you want done, type a sentence.
-4. On **Preview** or **Run**, it ranks real files against your request, builds a grounded prompt, and can launch the CLI in that project folder.
+4. On **Show prompt** or **Run**, it ranks real files against your request, builds a grounded prompt, and can launch the CLI in that project folder.
 
 Optional: advanced users can polish with a local or API LLM via `.env` (see `.env.example`). Core flow needs no keys.
+
+### Privacy (honest)
+
+| What | Stays local? |
+|------|----------------|
+| Folder scan, ranking, prompt build | Yes, on this computer |
+| Prompter itself | No account, no telemetry |
+| Coding CLI you open (Claude, Codex, Grok, …) | Follows **that tool’s** privacy policy (often cloud) |
+| Optional “Extra AI rewrite” | Sends a short brief to the provider in `.env` if enabled |
+
+So: Prompter is local. The agent you launch may still send the prompt (including ranked file excerpts) to its vendor.
 
 ---
 
@@ -67,7 +78,7 @@ You skipped step 1. Install Node.js, then try again.
 
 Prompter looks through your project files before building the prompt, then opens your CLI in that folder.
 
-- **Preview only** = build the prompt without opening the AI.
+- **Show prompt** = build the prompt without opening the AI.
 - **Copy** = copy the prompt yourself if you want to paste it somewhere else.
 
 ---

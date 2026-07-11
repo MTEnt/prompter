@@ -20,8 +20,8 @@
   --focus: var(--accent);
   --radius: 8px;
   --radius-sm: 6px;
-  --font: "Sora", system-ui, sans-serif;
-  --mono: "JetBrains Mono", ui-monospace, monospace;
+  --font: system-ui, -apple-system, "Segoe UI", sans-serif;
+  --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
   --rail-w: 220px;
   --z-toast: 50;
   --ease: cubic-bezier(0.16, 1, 0.3, 1);

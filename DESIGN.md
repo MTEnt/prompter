@@ -19,8 +19,8 @@ No warm amber/cream "AI workshop" palette. No purple gradients.
 
 ## Typography
 
-- **Sora** - UI (single family, product scale)
-- **JetBrains Mono** - prompt editors only
+- **UI:** system-ui stack (no Google Fonts / no network fonts)
+- **Editors:** ui-monospace (SF Mono / Menlo / Consolas)
 
 ## Layout
 
