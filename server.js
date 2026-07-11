@@ -20,6 +20,8 @@ import {
   launchAgentInTerminal,
   buildAgentInvocation,
 } from "./lib/agents.js";
+import { attachProject, buildContextForQuery, getProject } from "./lib/project/context.js";
+import { pickFolderNative } from "./lib/project/pick-folder.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PUBLIC = path.join(__dirname, "public");
@@ -148,6 +150,33 @@ async function handleApi(req, res, url) {
     });
   }
 
+  if (req.method === "POST" && url.pathname === "/api/pick-folder") {
+    try {
+      const folder = await pickFolderNative();
+      if (!folder) return send(res, 200, { ok: true, cancelled: true, path: null });
+      return send(res, 200, { ok: true, cancelled: false, path: folder });
+    } catch (e) {
+      return send(res, 500, { ok: false, error: e.message || String(e) });
+    }
+  }
+
+  if (req.method === "POST" && url.pathname === "/api/attach-project") {
+    let body;
+    try {
+      body = await readBody(req);
+    } catch {
+      return send(res, 400, { ok: false, error: "Invalid JSON body" });
+    }
+    const p = String(body.path || "").trim();
+    if (!p) return send(res, 400, { ok: false, error: "No folder path" });
+    try {
+      const meta = await attachProject(p, { structureOnly: false });
+      return send(res, 200, { ok: true, project: meta });
+    } catch (e) {
+      return send(res, 500, { ok: false, error: e.message || String(e) });
+    }
+  }
+
   if (req.method === "POST" && url.pathname === "/api/run") {
     let body;
     try {
@@ -175,6 +204,11 @@ async function handleApi(req, res, url) {
       body.profile ||
       (pick.agent.id === "agent" ? "grok" : pick.agent.id);
 
+    const project = getProject(body.projectId);
+    const slice = project
+      ? buildContextForQuery(project, input)
+      : { text: "", usedFiles: [] };
+
     const composed = composeAndExport({
       input,
       directionId: body.direction || "freeform",
@@ -182,11 +216,14 @@ async function handleApi(req, res, url) {
       tool: body.tool || profile,
       extraContext: body.extraContext || "",
       strengthId: body.strength || undefined,
+      projectContext: slice.text,
+      projectFiles: slice.usedFiles,
+      projectPath: project?.path || "",
     });
     if (!composed.ok) return send(res, 400, composed);
 
     const promptText = composed.improved;
-    const cwd = body.cwd || process.cwd();
+    const cwd = body.cwd || project?.path || process.cwd();
 
     // Always return shell command; on macOS also open Terminal
     const inv = buildAgentInvocation(pick.agent.id, promptText, {
@@ -227,13 +264,22 @@ async function handleApi(req, res, url) {
       return send(res, 400, { ok: false, error: "Invalid JSON body" });
     }
 
+    const project = getProject(body.projectId);
+    const input = body.input || body.prompt || "";
+    const slice = project
+      ? buildContextForQuery(project, input)
+      : { text: "", usedFiles: [] };
+
     let result = composeAndExport({
-      input: body.input || body.prompt || "",
+      input,
       directionId: body.direction || body.directionId || "freeform",
       profileId: body.profile || body.target || "generic",
       tool: body.tool || body.profile || body.target || "generic",
       extraContext: body.extraContext || "",
       strengthId: body.strength || undefined,
+      projectContext: slice.text,
+      projectFiles: slice.usedFiles,
+      projectPath: project?.path || "",
     });
 
     if (!result.ok) return send(res, 400, result);

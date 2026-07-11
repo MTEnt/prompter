@@ -123,6 +123,238 @@ body {
   margin: -0.25rem 0 0.75rem;
 }
 
+/* —— Attach gate (one click) —— */
+.attach-hero {
+  max-width: 34rem;
+  margin: 4vh auto 0;
+  padding: 0.5rem 0 2rem;
+}
+
+.attach-title {
+  margin: 0 0 0.65rem;
+  font-size: 1.65rem;
+  font-weight: 700;
+  letter-spacing: -0.03em;
+}
+
+.attach-lede {
+  margin: 0 0 1.35rem;
+  color: var(--muted);
+  max-width: 40ch;
+}
+
+.choose-folder {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  text-align: left;
+  padding: 1.2rem 1.25rem;
+  border-radius: 12px;
+  border: 1px dashed var(--line-strong);
+  background: var(--surface);
+  color: var(--ink);
+  font: inherit;
+  cursor: pointer;
+  transition: border-color 0.15s var(--ease), background 0.15s var(--ease);
+}
+
+.choose-folder:hover:not(:disabled) {
+  border-color: var(--accent-dim);
+  background: var(--surface-2);
+}
+
+.choose-folder:disabled {
+  opacity: 0.7;
+  cursor: wait;
+}
+
+.choose-icon {
+  display: grid;
+  place-items: center;
+  width: 2.5rem;
+  height: 2.5rem;
+  border-radius: 10px;
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-size: 1.4rem;
+  font-weight: 600;
+  flex-shrink: 0;
+}
+
+.choose-label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+.choose-label strong {
+  font-weight: 650;
+}
+
+.attach-loading {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.85rem;
+  margin-top: 1.25rem;
+  padding: 1rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+
+.attach-loading[hidden] {
+  display: none !important;
+}
+
+.spinner {
+  width: 1.15rem;
+  height: 1.15rem;
+  border-radius: 999px;
+  border: 2px solid var(--line-strong);
+  border-top-color: var(--accent);
+  flex-shrink: 0;
+  margin-top: 0.15rem;
+  animation: spin 0.7s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .spinner {
+    animation: none;
+    border-top-color: var(--line-strong);
+    opacity: 0.7;
+  }
+}
+
+.context-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--accent);
+  background: var(--accent-soft);
+  border: 1px solid color-mix(in srgb, var(--accent) 30%, var(--line));
+  padding: 0.28rem 0.65rem;
+  border-radius: 999px;
+  max-width: min(42vw, 16rem);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.context-status-dot {
+  width: 0.45rem;
+  height: 0.45rem;
+  border-radius: 999px;
+  background: var(--accent);
+  flex-shrink: 0;
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 22%, transparent);
+}
+
+.context-banner {
+  margin: 0 0 1.15rem;
+  padding: 0.85rem 1rem;
+  border: 1px solid color-mix(in srgb, var(--accent) 35%, var(--line));
+  border-radius: 10px;
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--accent) 10%, var(--surface)) 0%,
+    var(--surface) 100%
+  );
+}
+
+.context-banner-top {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 0.85rem;
+  margin-bottom: 0.55rem;
+}
+
+.context-banner-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: var(--accent);
+  text-transform: uppercase;
+  font-family: var(--mono);
+}
+
+.context-check {
+  display: grid;
+  place-items: center;
+  width: 1rem;
+  height: 1rem;
+  border-radius: 999px;
+  background: var(--accent);
+  color: #0b0d10;
+  font-size: 0.65rem;
+  line-height: 1;
+}
+
+.context-banner-name {
+  font-weight: 650;
+  letter-spacing: -0.01em;
+  font-size: 0.98rem;
+}
+
+.context-counters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin-bottom: 0.45rem;
+}
+
+.counter {
+  font-size: 0.78rem;
+  font-family: var(--mono);
+  color: var(--muted);
+  border: 1px solid var(--line);
+  background: var(--bg);
+  padding: 0.28rem 0.55rem;
+  border-radius: 999px;
+}
+
+.counter strong {
+  color: var(--ink);
+  font-weight: 650;
+  margin-right: 0.2rem;
+}
+
+.counter-used {
+  border-color: color-mix(in srgb, var(--accent) 40%, var(--line));
+  color: color-mix(in srgb, var(--accent) 55%, var(--muted));
+}
+
+.counter-used strong {
+  color: var(--accent);
+}
+
+.context-banner-path {
+  margin: 0;
+  font-size: 0.78rem;
+  font-family: var(--mono);
+  word-break: break-all;
+}
+
+.field-hint.ok {
+  color: var(--ok);
+}
+
+.field-hint.err {
+  color: var(--danger);
+}
+
 .direction-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));

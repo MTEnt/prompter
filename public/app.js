@@ -8,6 +8,9 @@ const state = {
   direction: "implement",
   lastShell: "",
   history: loadHistory(),
+  projectId: null,
+  project: null, // { id, path, name, fileCount, tokens, ... }
+  workshopReady: false,
 };
 
 const SAMPLES = {
@@ -322,6 +325,213 @@ async function scanAgents() {
   }
 }
 
+function showAttachScreen() {
+  $("screen-attach").hidden = false;
+  $("screen-workshop").hidden = true;
+  $("btn-change-project").hidden = true;
+  $("btn-rescan").hidden = true;
+  $("agent-status").hidden = true;
+  $("context-status").hidden = true;
+  $("logo-sub").textContent = "attach project → prompt → run";
+}
+
+function showWorkshopScreen() {
+  $("screen-attach").hidden = true;
+  $("screen-workshop").hidden = false;
+  $("btn-change-project").hidden = false;
+  $("btn-rescan").hidden = false;
+  $("agent-status").hidden = false;
+  $("logo-sub").textContent = "project loaded · pick CLI → run";
+  updateProjectContextUI();
+}
+
+function updateProjectContextUI(usedFiles) {
+  const p = state.project;
+  const status = $("context-status");
+  const usedEl = $("counter-used");
+
+  if (!p) {
+    status.hidden = true;
+    return;
+  }
+
+  $("project-chip-name").textContent = p.name || p.path || "Project";
+  $("project-chip-path").textContent = shortPath(p.path || "");
+  $("cwd").value = p.path || "";
+
+  const files = p.fileCount ?? 0;
+  const tokens = p.tokens ?? 0;
+  const size = p.bytesLabel || "—";
+
+  $("counter-files").innerHTML = `<strong>${files}</strong> files`;
+  $("counter-tokens").innerHTML = `<strong>~${formatTokens(tokens)}</strong> tokens`;
+  $("counter-size").innerHTML = `<strong>${escapeHtml(size)}</strong> on disk`;
+
+  if (typeof usedFiles === "number" && usedFiles > 0) {
+    usedEl.hidden = false;
+    $("counter-used-n").textContent = String(usedFiles);
+  } else if (Array.isArray(usedFiles) && usedFiles.length) {
+    usedEl.hidden = false;
+    $("counter-used-n").textContent = String(usedFiles.length);
+  }
+
+  status.hidden = false;
+  $("context-status-text").textContent = `Context loaded · ${files} files`;
+  status.title = `${p.name || "Project"}: ${files} files, ~${formatTokens(tokens)} tokens, ${size}`;
+}
+
+function formatTokens(n) {
+  if (n < 1000) return String(n);
+  if (n < 10000) return (n / 1000).toFixed(1) + "k";
+  return Math.round(n / 1000) + "k";
+}
+
+async function attachProjectFlow() {
+  const btn = $("btn-attach");
+  const hint = $("attach-hint");
+  const loading = $("attach-loading");
+  btn.disabled = true;
+  hint.textContent = "";
+  hint.className = "field-hint";
+  $("attach-title").textContent = "Choose project folder";
+  $("attach-sub").textContent = "Opening folder picker…";
+
+  try {
+    const pickRes = await fetch("/api/pick-folder", { method: "POST" });
+    const pick = await pickRes.json();
+    if (!pick.ok) throw new Error(pick.error || "Picker failed");
+    if (pick.cancelled || !pick.path) {
+      $("attach-sub").textContent = "Opens the normal folder picker";
+      toast("Cancelled");
+      return;
+    }
+
+    // Background read, then switch to workshop
+    loading.hidden = false;
+    btn.hidden = true;
+    $("attach-loading-title").textContent = "Reading your project…";
+    $("attach-loading-sub").textContent = pick.path;
+    hint.textContent = "Looking through the code on this computer…";
+    hint.className = "field-hint ok";
+
+    const attachRes = await fetch("/api/attach-project", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ path: pick.path }),
+    });
+    const data = await attachRes.json();
+    if (!data.ok) throw new Error(data.error || "Could not read project");
+
+    state.projectId = data.project.id;
+    state.project = data.project;
+    localStorage.setItem("prompter.projectPath", data.project.path);
+
+    showWorkshopScreen();
+    if (!state.workshopReady) {
+      await ensureWorkshop();
+    } else {
+      await scanAgents();
+    }
+    toast(`Loaded ${data.project.name}`);
+  } catch (e) {
+    hint.textContent = e.message || "Attach failed";
+    hint.className = "field-hint err";
+    toast(e.message || "Attach failed", true);
+  } finally {
+    btn.disabled = false;
+    btn.hidden = false;
+    loading.hidden = true;
+    $("attach-sub").textContent = "Opens the normal folder picker";
+  }
+}
+
+async function ensureWorkshop() {
+  if (state.workshopReady) return;
+  const savedDir = localStorage.getItem("prompter.direction");
+  if (savedDir) state.direction = savedDir;
+
+  const catRes = await fetch("/api/catalog");
+  state.catalog = await catRes.json();
+  renderDirections();
+
+  const tools = state.catalog.tools || Object.keys(EXPORT_LABELS);
+  $("export-tool").innerHTML = tools
+    .map((id) => `<option value="${id}">${EXPORT_LABELS[id] || id}</option>`)
+    .join("");
+
+  if (state.catalog.llm?.available) {
+    $("llm-hint").textContent = `(${state.catalog.llm.name})`;
+  } else {
+    $("use-llm").checked = false;
+    $("llm-hint").textContent = "(optional)";
+  }
+
+  await scanAgents();
+  setupWorkshopHandlers();
+  setupOnboarding();
+  updateInStats();
+  renderHistory();
+  state.workshopReady = true;
+}
+
+function setupWorkshopHandlers() {
+  if (setupWorkshopHandlers._done) return;
+  setupWorkshopHandlers._done = true;
+
+  $("btn-rescan").addEventListener("click", () => scanAgents());
+  $("input").addEventListener("input", updateInStats);
+  $("btn-run").addEventListener("click", runInTerminal);
+  $("btn-improve").addEventListener("click", previewOnly);
+  $("btn-sample").addEventListener("click", () => {
+    $("input").value = SAMPLES[state.direction] || SAMPLES.implement;
+    updateInStats();
+    toast("Example loaded");
+  });
+  $("btn-paste").addEventListener("click", async () => {
+    try {
+      $("input").value = await navigator.clipboard.readText();
+      updateInStats();
+      toast("Pasted");
+    } catch {
+      toast("Use ⌘V to paste", true);
+    }
+  });
+  $("btn-copy").addEventListener("click", async () => {
+    await navigator.clipboard.writeText($("output").value);
+    toast("Prompt copied");
+  });
+  $("btn-copy-cmd").addEventListener("click", async () => {
+    if (!state.lastShell) return;
+    await navigator.clipboard.writeText(state.lastShell);
+    toast("Shell command copied");
+  });
+  $("btn-clear-history").addEventListener("click", () => {
+    state.history = [];
+    saveHistory();
+    renderHistory();
+  });
+  document.addEventListener("keydown", (e) => {
+    if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
+      if ($("screen-workshop").hidden) return;
+      e.preventDefault();
+      runInTerminal();
+    }
+  });
+}
+
+function composeBody(input) {
+  return {
+    input,
+    direction: state.direction,
+    profile: profileForAgent(state.agentId),
+    tool: $("export-tool").value || profileForAgent(state.agentId),
+    extraContext: $("extra").value,
+    strength: $("strength").value || undefined,
+    useLlm: $("use-llm").checked,
+    projectId: state.projectId || undefined,
+  };
+}
+
 async function previewOnly() {
   const input = $("input").value.trim();
   if (!input) {
@@ -332,21 +542,17 @@ async function previewOnly() {
     toast("Pick a Ready CLI first", true);
     return;
   }
+  if (!state.projectId) {
+    toast("Attach a project first", true);
+    return;
+  }
   const label = $("btn-improve")?.querySelector(".btn-label-preview");
-  if (label) label.textContent = "…";
+  if (label) label.textContent = "Reading code…";
   try {
     const res = await fetch("/api/compose", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        input,
-        direction: state.direction,
-        profile: profileForAgent(state.agentId),
-        tool: $("export-tool").value || profileForAgent(state.agentId),
-        extraContext: $("extra").value,
-        strength: $("strength").value || undefined,
-        useLlm: $("use-llm").checked,
-      }),
+      body: JSON.stringify(composeBody(input)),
     });
     const data = await res.json();
     if (!data.ok) {
@@ -360,14 +566,22 @@ async function previewOnly() {
       agent: state.agentId,
       directionLabel: data.meta?.directionLabel,
     });
+    const files = data.meta?.projectFiles;
+    if (files?.length) updateProjectContextUI(files);
     if ($("auto-copy").checked) {
       try {
         await navigator.clipboard.writeText(text);
-        toast("Prompt ready + copied");
+        toast(
+          files?.length
+            ? `Prompt ready (used ${files.length} files) + copied`
+            : "Prompt ready + copied"
+        );
       } catch {
         toast("Prompt ready");
       }
-    } else toast("Prompt ready");
+    } else {
+      toast(files?.length ? `Prompt ready · ${files.length} project files` : "Prompt ready");
+    }
   } catch (e) {
     toast(e.message || "Server offline", true);
   } finally {
@@ -386,26 +600,24 @@ async function runInTerminal() {
     toast("Click a Ready CLI above first", true);
     return;
   }
+  if (!state.projectId) {
+    toast("Attach a project first", true);
+    return;
+  }
 
   const btn = $("btn-run");
   const label = btn.querySelector(".btn-label");
   btn.disabled = true;
-  if (label) label.textContent = "Launching…";
+  if (label) label.textContent = "Reading code…";
 
   try {
     const res = await fetch("/api/run", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        input,
+        ...composeBody(input),
         agent: state.agentId,
-        direction: state.direction,
-        profile: profileForAgent(state.agentId),
-        tool: $("export-tool").value || profileForAgent(state.agentId),
-        extraContext: $("extra").value,
-        strength: $("strength").value || undefined,
-        useLlm: $("use-llm").checked,
-        cwd: $("cwd").value.trim() || undefined,
+        cwd: $("cwd").value.trim() || state.project?.path || undefined,
         launch: true,
         headless: false,
       }),
@@ -459,9 +671,12 @@ async function runInTerminal() {
       directionId: state.direction,
     });
 
+    const usedFiles = data.composed?.meta?.projectFiles;
+    if (usedFiles?.length) updateProjectContextUI(usedFiles);
+    const used = usedFiles?.length;
     toast(
       data.launch?.launched === "terminal"
-        ? `Terminal → ${data.agent?.id}`
+        ? `Terminal → ${data.agent?.id}${used ? ` · ${used} files` : ""}`
         : "Command ready. Copy it if Terminal didn’t open"
     );
   } catch (e) {
@@ -473,7 +688,7 @@ async function runInTerminal() {
 }
 
 function setupOnboarding() {
-  const key = "prompter.onboarded.v3";
+  const key = "prompter.onboarded.v4";
   if (!localStorage.getItem(key)) $("onboarding").hidden = false;
   $("btn-dismiss-onboarding").addEventListener("click", () => {
     localStorage.setItem(key, "1");
@@ -482,72 +697,13 @@ function setupOnboarding() {
 }
 
 async function init() {
-  const savedDir = localStorage.getItem("prompter.direction");
-  if (savedDir) state.direction = savedDir;
-
-  const catRes = await fetch("/api/catalog");
-  state.catalog = await catRes.json();
-
-  renderDirections();
-
-  const tools = state.catalog.tools || Object.keys(EXPORT_LABELS);
-  $("export-tool").innerHTML = tools
-    .map((id) => `<option value="${id}">${EXPORT_LABELS[id] || id}</option>`)
-    .join("");
-
-  if (state.catalog.llm?.available) {
-    $("llm-hint").textContent = `(${state.catalog.llm.name})`;
-  } else {
-    $("use-llm").checked = false;
-    $("llm-hint").textContent = "(optional)";
-  }
-
-  // Always scan CLIs on load / refresh
-  await scanAgents();
-
-  $("btn-rescan").addEventListener("click", () => scanAgents());
-  $("input").addEventListener("input", updateInStats);
-  $("btn-run").addEventListener("click", runInTerminal);
-  $("btn-improve").addEventListener("click", previewOnly);
-  $("btn-sample").addEventListener("click", () => {
-    $("input").value = SAMPLES[state.direction] || SAMPLES.implement;
-    updateInStats();
-    toast("Example loaded");
+  showAttachScreen();
+  $("btn-attach").addEventListener("click", attachProjectFlow);
+  $("btn-change-project").addEventListener("click", () => {
+    state.projectId = null;
+    state.project = null;
+    showAttachScreen();
   });
-  $("btn-paste").addEventListener("click", async () => {
-    try {
-      $("input").value = await navigator.clipboard.readText();
-      updateInStats();
-      toast("Pasted");
-    } catch {
-      toast("Use ⌘V to paste", true);
-    }
-  });
-  $("btn-copy").addEventListener("click", async () => {
-    await navigator.clipboard.writeText($("output").value);
-    toast("Prompt copied");
-  });
-  $("btn-copy-cmd").addEventListener("click", async () => {
-    if (!state.lastShell) return;
-    await navigator.clipboard.writeText(state.lastShell);
-    toast("Shell command copied");
-  });
-  $("btn-clear-history").addEventListener("click", () => {
-    state.history = [];
-    saveHistory();
-    renderHistory();
-  });
-
-  document.addEventListener("keydown", (e) => {
-    if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
-      e.preventDefault();
-      runInTerminal();
-    }
-  });
-
-  setupOnboarding();
-  updateInStats();
-  renderHistory();
 }
 
 init().catch((err) => {
