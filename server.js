@@ -139,28 +139,47 @@ function safeJoin(root, reqPath) {
   return full;
 }
 
+function isLoopbackAddr(addr) {
+  if (!addr) return false;
+  const a = String(addr).replace(/^::ffff:/, "");
+  return a === "127.0.0.1" || a === "::1" || a === "localhost";
+}
+
+function peerAllowed(req) {
+  if (ALLOW_LAN) return true;
+  const ra = req.socket?.remoteAddress;
+  return isLoopbackAddr(ra);
+}
+
 function hostAllowed(req) {
   const h = String(req.headers.host || "")
     .split(":")[0]
     .toLowerCase();
-  return (
-    h === "127.0.0.1" ||
-    h === "localhost" ||
-    h === "[::1]" ||
-    h === "::1" ||
-    h === ""
-  );
+  if (!h) return false;
+  return h === "127.0.0.1" || h === "localhost" || h === "[::1]" || h === "::1";
 }
 
 function authOk(req) {
   const hdr = req.headers.authorization || "";
   const m = hdr.match(/^Bearer\s+(\S+)/i);
   const token = m?.[1] || req.headers["x-prompter-token"];
-  return token && token === SESSION_TOKEN;
+  if (!token || typeof token !== "string") return false;
+  try {
+    const a = Buffer.from(token);
+    const b = Buffer.from(SESSION_TOKEN);
+    if (a.length !== b.length) return false;
+    return crypto.timingSafeEqual(a, b);
+  } catch {
+    return false;
+  }
 }
 
 function requireMutatingAuth(req, res) {
-  if (!hostAllowed(req)) {
+  if (!peerAllowed(req)) {
+    send(res, 403, { ok: false, error: "Remote clients blocked (local only)" });
+    return false;
+  }
+  if (!ALLOW_LAN && !hostAllowed(req)) {
     send(res, 403, { ok: false, error: "Host not allowed" });
     return false;
   }
@@ -222,8 +241,17 @@ async function composePipeline(body) {
       providerId: body.llmProvider,
     });
     if (polished.ok) {
-      // Keep project excerpts from local compose; prepend polished guidance
-      const merged = `${polished.improved}\n\n---\n\n${result.improved}`;
+      // Guidance from LLM + project excerpts only (do not double-paste full local draft)
+      const merged = [
+        polished.improved.trim(),
+        "",
+        "---",
+        "",
+        slice.text,
+        "",
+        `Working directory: ${project.path}`,
+        `User request: ${input}`,
+      ].join("\n");
       const exported = exportForTool(merged, body.tool || body.profile || "generic", {
         title: result.meta?.directionLabel || "Prompt",
       });
@@ -248,8 +276,18 @@ async function composePipeline(body) {
 }
 
 async function handleApi(req, res, url) {
-  if (!hostAllowed(req) && !ALLOW_LAN) {
+  if (!peerAllowed(req)) {
+    return send(res, 403, { ok: false, error: "Remote clients blocked (local only)" });
+  }
+  if (!ALLOW_LAN && !hostAllowed(req)) {
     return send(res, 403, { ok: false, error: "Host not allowed" });
+  }
+
+  // All mutating API routes need auth (except nothing - session is GET)
+  if (req.method !== "GET" && req.method !== "HEAD") {
+    if (!authOk(req)) {
+      return send(res, 401, { ok: false, error: "Unauthorized. Refresh the page." });
+    }
   }
 
   if (req.method === "GET" && url.pathname === "/api/health") {
@@ -331,10 +369,11 @@ async function handleApi(req, res, url) {
     }
     const p = String(body.path || "").trim();
     if (!p) return send(res, 400, { ok: false, error: "No folder path" });
-    const ticket = consumeAttachTicket(body.ticket, p);
+    const ticket = consumeAttachTicket(body.ticket, p, { peek: true });
     if (!ticket.ok) return send(res, 400, ticket);
     try {
       const meta = await attachProject(ticket.path, { structureOnly: false });
+      consumeAttachTicket(body.ticket, p, { consume: true });
       return send(res, 200, { ok: true, project: meta });
     } catch (e) {
       return send(res, 500, { ok: false, error: e.message || String(e) });

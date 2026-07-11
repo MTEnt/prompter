@@ -382,6 +382,12 @@ body {
   margin-top: 0.65rem;
   padding-top: 0.55rem;
   border-top: 1px solid var(--line);
+  max-height: 9rem;
+  overflow: auto;
+}
+
+.agent-id {
+  display: none;
 }
 
 .evidence-title {
