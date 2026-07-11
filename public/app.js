@@ -268,7 +268,11 @@ function selectAgent(id) {
     exp.value = profile;
   }
   $("agent-hint").textContent = `Selected ${sel?.name || id}. Type your task, then Run.`;
-  renderAgents();
+  document.querySelectorAll(".agent-card .agent-ready").forEach((el) => {
+    const card = el.closest(".agent-card");
+    if (!card) return;
+    el.textContent = card.dataset.id === id ? "Selected" : "Ready";
+  });
 }
 
 const PRIMARY_DIRS = ["implement", "debug", "fix-error", "review", "explain", "freeform"];
