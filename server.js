@@ -26,6 +26,7 @@ import {
   consumeAttachTicket,
   detachProject,
   issueAttachTicket,
+  reindexProject,
   requireProject,
 } from "./lib/project/context.js";
 import { pickFolderNative } from "./lib/project/pick-folder.js";
@@ -400,15 +401,12 @@ async function handleApi(req, res, url) {
     } catch (e) {
       return send(res, 400, { ok: false, error: e.message || "Invalid JSON" });
     }
-    const need = requireProject(body.projectId);
-    if (!need.ok) return send(res, 409, need);
-    try {
-      detachProject(body.projectId);
-      const meta = await attachProject(need.project.path, { structureOnly: false });
-      return send(res, 200, { ok: true, project: meta });
-    } catch (e) {
-      return send(res, 500, { ok: false, error: e.message || String(e) });
+    const result = await reindexProject(body.projectId);
+    if (!result.ok) {
+      const status = result.code === "PROJECT_GONE" || result.code === "PROJECT_REQUIRED" ? 409 : 400;
+      return send(res, status, result);
     }
+    return send(res, 200, { ok: true, project: result.project });
   }
 
   if (req.method === "POST" && url.pathname === "/api/run") {
