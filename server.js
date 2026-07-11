@@ -20,13 +20,37 @@ import {
   launchAgentInTerminal,
   buildAgentInvocation,
 } from "./lib/agents.js";
-import { attachProject, buildContextForQuery, getProject } from "./lib/project/context.js";
+import {
+  attachProject,
+  buildContextForQuery,
+  consumeAttachTicket,
+  detachProject,
+  issueAttachTicket,
+  requireProject,
+} from "./lib/project/context.js";
 import { pickFolderNative } from "./lib/project/pick-folder.js";
+import crypto from "node:crypto";
+import os from "node:os";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PUBLIC = path.join(__dirname, "public");
 const PORT = Number(process.env.PORT) || 3847;
-const HOST = process.env.HOST || "127.0.0.1";
+let HOST = process.env.HOST || "127.0.0.1";
+const ALLOW_LAN = process.env.PROMPTER_ALLOW_LAN === "1";
+if (!ALLOW_LAN && HOST !== "127.0.0.1" && HOST !== "localhost" && HOST !== "::1") {
+  console.warn(`[prompter] Refusing non-loopback HOST=${HOST}; using 127.0.0.1 (set PROMPTER_ALLOW_LAN=1 to override)`);
+  HOST = "127.0.0.1";
+}
+
+/** Per-process session token — UI loads it from /api/session */
+const SESSION_TOKEN =
+  process.env.PROMPTER_TOKEN || crypto.randomBytes(24).toString("hex");
+const TOKEN_FILE = path.join(os.tmpdir(), `prompter-token-${PORT}`);
+try {
+  fs.writeFileSync(TOKEN_FILE, SESSION_TOKEN, { encoding: "utf8", mode: 0o600 });
+} catch {
+  /* ignore */
+}
 
 function loadEnvFile() {
   const envPath = path.join(__dirname, ".env");
@@ -77,10 +101,21 @@ function send(res, status, body, headers = {}) {
   res.end(data);
 }
 
+const MAX_BODY = 1.5 * 1024 * 1024;
+
 function readBody(req) {
   return new Promise((resolve, reject) => {
     const chunks = [];
-    req.on("data", (c) => chunks.push(c));
+    let size = 0;
+    req.on("data", (c) => {
+      size += c.length;
+      if (size > MAX_BODY) {
+        reject(new Error("Request body too large"));
+        req.destroy();
+        return;
+      }
+      chunks.push(c);
+    });
     req.on("end", () => {
       const raw = Buffer.concat(chunks).toString("utf8");
       if (!raw) return resolve({});
@@ -97,20 +132,144 @@ function readBody(req) {
 function safeJoin(root, reqPath) {
   const decoded = decodeURIComponent(reqPath.split("?")[0]);
   const clean = path.normalize(decoded).replace(/^(\.\.[/\\])+/, "");
-  const full = path.join(root, clean);
-  if (!full.startsWith(root)) return null;
+  const full = path.resolve(path.join(root, clean));
+  const rootResolved = path.resolve(root);
+  const rel = path.relative(rootResolved, full);
+  if (rel.startsWith("..") || path.isAbsolute(rel)) return null;
   return full;
 }
 
+function hostAllowed(req) {
+  const h = String(req.headers.host || "")
+    .split(":")[0]
+    .toLowerCase();
+  return (
+    h === "127.0.0.1" ||
+    h === "localhost" ||
+    h === "[::1]" ||
+    h === "::1" ||
+    h === ""
+  );
+}
+
+function authOk(req) {
+  const hdr = req.headers.authorization || "";
+  const m = hdr.match(/^Bearer\s+(\S+)/i);
+  const token = m?.[1] || req.headers["x-prompter-token"];
+  return token && token === SESSION_TOKEN;
+}
+
+function requireMutatingAuth(req, res) {
+  if (!hostAllowed(req)) {
+    send(res, 403, { ok: false, error: "Host not allowed" });
+    return false;
+  }
+  if (req.method !== "GET" && req.method !== "HEAD" && !authOk(req)) {
+    send(res, 401, { ok: false, error: "Unauthorized. Refresh the page." });
+    return false;
+  }
+  return true;
+}
+
+async function composePipeline(body) {
+  const input = body.input || body.prompt || "";
+  if (!String(input).trim()) {
+    return { ok: false, error: "Describe what you need first." };
+  }
+
+  const need = requireProject(body.projectId);
+  if (!need.ok) return need;
+  const project = need.project;
+
+  const slice = buildContextForQuery(project, input);
+  let result = composeAndExport({
+    input,
+    directionId: body.direction || body.directionId || "freeform",
+    profileId: body.profile || body.target || "generic",
+    tool: body.tool || body.profile || body.target || "generic",
+    extraContext: body.extraContext || "",
+    strengthId: body.strength || undefined,
+    projectContext: slice.text,
+    projectFiles: slice.usedFiles,
+    projectPath: project.path,
+    evidence: slice.evidence,
+    promptTokens: slice.promptTokens,
+  });
+  if (!result.ok) return result;
+
+  result.meta = {
+    ...result.meta,
+    evidence: slice.evidence,
+    promptTokens: slice.promptTokens,
+    indexedFiles: project.files.length,
+    indexedTokens: project.stats?.tokens ?? null,
+  };
+
+  if (body.useLlm) {
+    // Do not send full file bodies to remote polish — brief only
+    const briefOnly = [
+      `Direction: ${result.meta.directionLabel || body.direction}`,
+      `User request:\n${input}`,
+      `Relevant paths: ${(slice.usedFiles || []).join(", ")}`,
+      `Local draft (may omit large code blocks):\n${String(result.improved).slice(0, 6000)}`,
+    ].join("\n\n");
+    const polished = await polishWithLlm({
+      original: input,
+      localImproved: briefOnly,
+      profileName: body.profile || "generic",
+      taskName: result.meta?.task || "general",
+      strengthName: result.meta?.strength || "medium",
+      providerId: body.llmProvider,
+    });
+    if (polished.ok) {
+      // Keep project excerpts from local compose; prepend polished guidance
+      const merged = `${polished.improved}\n\n---\n\n${result.improved}`;
+      const exported = exportForTool(merged, body.tool || body.profile || "generic", {
+        title: result.meta?.directionLabel || "Prompt",
+      });
+      result = {
+        ...result,
+        improved: merged,
+        text: exported.text,
+        hint: exported.hint,
+        meta: {
+          ...result.meta,
+          mode: `${result.meta.mode}+llm`,
+          llmProvider: polished.provider,
+          llmModel: polished.model,
+        },
+      };
+    } else {
+      result.llmError = polished.error;
+    }
+  }
+
+  return result;
+}
+
 async function handleApi(req, res, url) {
+  if (!hostAllowed(req) && !ALLOW_LAN) {
+    return send(res, 403, { ok: false, error: "Host not allowed" });
+  }
+
   if (req.method === "GET" && url.pathname === "/api/health") {
     const idx = libraryIndex();
     return send(res, 200, {
       ok: true,
       name: "prompter",
-      version: "1.1.0",
+      version: "1.2.0",
       llm: detectLlmConfig(),
       library: idx.count,
+      localOnly: true,
+    });
+  }
+
+  if (req.method === "GET" && url.pathname === "/api/session") {
+    return send(res, 200, {
+      ok: true,
+      token: SESSION_TOKEN,
+      host: HOST,
+      port: PORT,
     });
   }
 
@@ -151,43 +310,56 @@ async function handleApi(req, res, url) {
   }
 
   if (req.method === "POST" && url.pathname === "/api/pick-folder") {
+    if (!requireMutatingAuth(req, res)) return;
     try {
       const folder = await pickFolderNative();
       if (!folder) return send(res, 200, { ok: true, cancelled: true, path: null });
-      return send(res, 200, { ok: true, cancelled: false, path: folder });
+      const ticket = issueAttachTicket(folder);
+      return send(res, 200, { ok: true, cancelled: false, path: folder, ticket });
     } catch (e) {
       return send(res, 500, { ok: false, error: e.message || String(e) });
     }
   }
 
   if (req.method === "POST" && url.pathname === "/api/attach-project") {
+    if (!requireMutatingAuth(req, res)) return;
     let body;
     try {
       body = await readBody(req);
-    } catch {
-      return send(res, 400, { ok: false, error: "Invalid JSON body" });
+    } catch (e) {
+      return send(res, 400, { ok: false, error: e.message || "Invalid JSON body" });
     }
     const p = String(body.path || "").trim();
     if (!p) return send(res, 400, { ok: false, error: "No folder path" });
+    const ticket = consumeAttachTicket(body.ticket, p);
+    if (!ticket.ok) return send(res, 400, ticket);
     try {
-      const meta = await attachProject(p, { structureOnly: false });
+      const meta = await attachProject(ticket.path, { structureOnly: false });
       return send(res, 200, { ok: true, project: meta });
     } catch (e) {
       return send(res, 500, { ok: false, error: e.message || String(e) });
     }
   }
 
-  if (req.method === "POST" && url.pathname === "/api/run") {
-    let body;
+  if (req.method === "POST" && url.pathname === "/api/detach-project") {
+    if (!requireMutatingAuth(req, res)) return;
+    let body = {};
     try {
       body = await readBody(req);
     } catch {
-      return send(res, 400, { ok: false, error: "Invalid JSON body" });
+      /* empty */
     }
+    detachProject(body.projectId);
+    return send(res, 200, { ok: true });
+  }
 
-    const input = body.input || body.prompt || "";
-    if (!String(input).trim()) {
-      return send(res, 400, { ok: false, error: "Describe what you need first." });
+  if (req.method === "POST" && url.pathname === "/api/run") {
+    if (!requireMutatingAuth(req, res)) return;
+    let body;
+    try {
+      body = await readBody(req);
+    } catch (e) {
+      return send(res, 400, { ok: false, error: e.message || "Invalid JSON body" });
     }
 
     const agentId = body.agent || "auto";
@@ -204,33 +376,26 @@ async function handleApi(req, res, url) {
       body.profile ||
       (pick.agent.id === "agent" ? "grok" : pick.agent.id);
 
-    const project = getProject(body.projectId);
-    const slice = project
-      ? buildContextForQuery(project, input)
-      : { text: "", usedFiles: [] };
-
-    const composed = composeAndExport({
-      input,
-      directionId: body.direction || "freeform",
-      profileId: profile,
+    const composed = await composePipeline({
+      ...body,
+      profile,
       tool: body.tool || profile,
-      extraContext: body.extraContext || "",
-      strengthId: body.strength || undefined,
-      projectContext: slice.text,
-      projectFiles: slice.usedFiles,
-      projectPath: project?.path || "",
     });
-    if (!composed.ok) return send(res, 400, composed);
+    if (!composed.ok) {
+      const status = composed.code === "PROJECT_GONE" || composed.code === "PROJECT_REQUIRED" ? 409 : 400;
+      return send(res, status, composed);
+    }
 
     const promptText = composed.improved;
-    const cwd = body.cwd || project?.path || process.cwd();
+    // cwd only from attached project (ignore client override for safety)
+    const need = requireProject(body.projectId);
+    const cwd = need.ok ? need.project.path : process.cwd();
 
-    // Always return shell command; on macOS also open Terminal
     const inv = buildAgentInvocation(pick.agent.id, promptText, {
       cwd,
       headless: Boolean(body.headless),
-      yes: Boolean(body.yes),
-      model: body.model,
+      yes: false, // never honor auto-approve from HTTP
+      model: typeof body.model === "string" && /^[a-zA-Z0-9._:/-]+$/.test(body.model) ? body.model : undefined,
     });
 
     let launch = null;
@@ -238,8 +403,8 @@ async function handleApi(req, res, url) {
       launch = await launchAgentInTerminal(pick.agent.id, promptText, {
         cwd,
         headless: Boolean(body.headless),
-        yes: Boolean(body.yes),
-        model: body.model,
+        yes: false,
+        model: typeof body.model === "string" && /^[a-zA-Z0-9._:/-]+$/.test(body.model) ? body.model : undefined,
       });
     }
 
@@ -253,67 +418,24 @@ async function handleApi(req, res, url) {
       shell: inv.ok ? inv.shell : null,
       cwd,
       launch,
+      llmError: composed.llmError,
     });
   }
 
   if (req.method === "POST" && url.pathname === "/api/compose") {
+    if (!requireMutatingAuth(req, res)) return;
     let body;
     try {
       body = await readBody(req);
-    } catch {
-      return send(res, 400, { ok: false, error: "Invalid JSON body" });
+    } catch (e) {
+      return send(res, 400, { ok: false, error: e.message || "Invalid JSON body" });
     }
 
-    const project = getProject(body.projectId);
-    const input = body.input || body.prompt || "";
-    const slice = project
-      ? buildContextForQuery(project, input)
-      : { text: "", usedFiles: [] };
-
-    let result = composeAndExport({
-      input,
-      directionId: body.direction || body.directionId || "freeform",
-      profileId: body.profile || body.target || "generic",
-      tool: body.tool || body.profile || body.target || "generic",
-      extraContext: body.extraContext || "",
-      strengthId: body.strength || undefined,
-      projectContext: slice.text,
-      projectFiles: slice.usedFiles,
-      projectPath: project?.path || "",
-    });
-
-    if (!result.ok) return send(res, 400, result);
-
-    if (body.useLlm) {
-      const polished = await polishWithLlm({
-        original: result.original,
-        localImproved: result.improved,
-        profileName: body.profile || "generic",
-        taskName: result.meta?.task || "general",
-        strengthName: result.meta?.strength || "medium",
-        providerId: body.llmProvider,
-      });
-      if (polished.ok) {
-        const exported = exportForTool(polished.improved, body.tool || body.profile || "generic", {
-          title: result.meta?.directionLabel || "Prompt",
-        });
-        result = {
-          ...result,
-          improved: polished.improved,
-          text: exported.text,
-          hint: exported.hint,
-          meta: {
-            ...result.meta,
-            mode: `${result.meta.mode}+llm`,
-            llmProvider: polished.provider,
-            llmModel: polished.model,
-          },
-        };
-      } else {
-        result.llmError = polished.error;
-      }
+    const result = await composePipeline(body);
+    if (!result.ok) {
+      const status = result.code === "PROJECT_GONE" || result.code === "PROJECT_REQUIRED" ? 409 : 400;
+      return send(res, status, result);
     }
-
     return send(res, 200, result);
   }
 
@@ -530,15 +652,15 @@ if (!server.listening) {
   server.listen(PORT, HOST, () => {
     const llm = detectLlmConfig();
     const idx = libraryIndex();
-    console.log(`\n  Prompter is live`);
+    console.log(`\n  Prompter is live (local only)`);
     console.log(`  → http://${HOST}:${PORT}`);
     console.log(`  Library: ${idx.count.templates} templates · ${idx.count.patterns} patterns`);
     console.log(
       llm.available
-        ? `  LLM polish: ${llm.name} (${llm.model})`
-        : `  LLM polish: off (local rewrite only)`
+        ? `  Extra AI rewrite: ${llm.name} (${llm.model})`
+        : `  Extra AI rewrite: off`
     );
-    console.log(`  CLI: node bin/prompter.js list\n`);
+    console.log(`  Leave this window open. Close it to stop.\n`);
   });
 }
 

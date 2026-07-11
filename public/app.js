@@ -4,14 +4,58 @@ const state = {
   catalog: null,
   agents: [],
   autoAgent: null,
-  agentId: null, // selected CLI
+  agentId: null,
   direction: "implement",
   lastShell: "",
   history: loadHistory(),
   projectId: null,
-  project: null, // { id, path, name, fileCount, tokens, ... }
+  project: null,
   workshopReady: false,
+  token: null,
+  lastEvidence: [],
+  lastPromptTokens: null,
 };
+
+async function ensureSession() {
+  if (state.token) return state.token;
+  const res = await fetch("/api/session");
+  const data = await res.json();
+  if (!data.ok || !data.token) throw new Error("Could not start session. Restart Prompter.");
+  state.token = data.token;
+  return state.token;
+}
+
+async function api(path, opts = {}) {
+  await ensureSession();
+  const headers = {
+    ...(opts.headers || {}),
+    "X-Prompter-Token": state.token,
+  };
+  if (opts.body && !headers["Content-Type"]) {
+    headers["Content-Type"] = "application/json";
+  }
+  if (opts.method && opts.method !== "GET") {
+    headers.Authorization = `Bearer ${state.token}`;
+  }
+  const res = await fetch(path, { ...opts, headers });
+  let data = {};
+  try {
+    data = await res.json();
+  } catch {
+    data = { ok: false, error: "Bad response from Prompter" };
+  }
+  if (res.status === 401) {
+    state.token = null;
+    throw new Error("Session expired. Refresh the page.");
+  }
+  if (res.status === 409 || data.code === "PROJECT_GONE" || data.code === "PROJECT_REQUIRED") {
+    state.projectId = null;
+    state.project = null;
+    showAttachScreen();
+    throw new Error(data.error || "Choose your project folder again.");
+  }
+  return { res, data };
+}
 
 const SAMPLES = {
   freeform: `hey can you look at my project and make the homepage better? fonts and layout feel off.`,
@@ -142,14 +186,24 @@ function renderAgents() {
 
   if (!ready.length) {
     root.innerHTML = `<div class="agent-empty">
-      No coding CLIs detected. Install <code>grok</code>, <code>codex</code>, <code>claude</code>, <code>gemini</code>, or <code>agy</code>, then hit Rescan.
+      <strong>No coding AI apps found on this computer.</strong>
+      <p>Install one of these, then click Rescan:</p>
+      <ul class="agent-install">
+        <li><a href="https://docs.x.ai/" target="_blank" rel="noopener">Grok Build</a></li>
+        <li><a href="https://github.com/openai/codex" target="_blank" rel="noopener">OpenAI Codex CLI</a></li>
+        <li><a href="https://docs.anthropic.com/en/docs/claude-code" target="_blank" rel="noopener">Claude Code</a></li>
+        <li><a href="https://github.com/google-gemini/gemini-cli" target="_blank" rel="noopener">Gemini CLI</a></li>
+      </ul>
+      <p class="muted">You can still use <strong>Show prompt</strong> to copy text into a browser chat.</p>
     </div>`;
-    $("agent-hint").textContent = "";
+    $("agent-hint").textContent = "No apps installed yet — Show prompt still works.";
     $("btn-run").disabled = true;
+    $("btn-improve").disabled = false;
     return;
   }
 
   $("btn-run").disabled = false;
+  $("btn-improve").disabled = false;
 
   for (const a of ready) {
     const btn = document.createElement("button");
@@ -159,7 +213,7 @@ function renderAgents() {
     btn.setAttribute("role", "radio");
     btn.setAttribute("aria-checked", a.id === state.agentId ? "true" : "false");
     btn.innerHTML = `
-      <span class="agent-ready">Ready</span>
+      <span class="agent-ready">Installed</span>
       <span class="agent-name">${escapeHtml(a.name)}</span>
       <span class="agent-id">${escapeHtml(a.id)}</span>
       <span class="agent-path" title="${escapeHtml(a.path)}">${escapeHtml(shortPath(a.path))}</span>
@@ -177,8 +231,8 @@ function renderAgents() {
 
   const sel = state.agents.find((a) => a.id === state.agentId && a.available);
   $("agent-hint").textContent = sel
-    ? `Selected ${sel.name}. Prompts will be shaped for this tool, then opened in Terminal.`
-    : "Click a Ready CLI above.";
+    ? `Using ${sel.name}. Run opens it in Terminal with your project folder.`
+    : "Click an installed app above.";
 }
 
 function shortPath(p) {
@@ -199,7 +253,7 @@ function selectAgent(id) {
   if (exp && [...exp.options].some((o) => o.value === profile)) {
     exp.value = profile;
   }
-  $("agent-hint").textContent = `Selected ${id}. Hit Run in Terminal when ready.`;
+  $("agent-hint").textContent = `Selected ${id}. Type your task, then Run.`;
 }
 
 function renderDirections() {
@@ -300,10 +354,9 @@ function pushHistory(entry) {
 async function scanAgents() {
   $("agent-status").textContent = "Scanning…";
   $("agent-grid").innerHTML =
-    `<div class="agent-loading">Scanning for grok, codex, claude, gemini, agy…</div>`;
+    `<div class="agent-loading">Looking for coding AI apps on this computer…</div>`;
   try {
-    const res = await fetch("/api/agents");
-    const data = await res.json();
+    const { data } = await api("/api/agents");
     state.agents = data.agents || [];
     state.autoAgent = data.auto;
 
@@ -315,13 +368,13 @@ async function scanAgents() {
     if (state.agentId) selectAgent(state.agentId);
     toast(
       state.agentId
-        ? `Found CLIs. Selected ${state.agentId}`
-        : "No CLIs detected"
+        ? `Found apps. Using ${state.agentId}`
+        : "No coding AI apps found"
     );
   } catch (err) {
-    $("agent-grid").innerHTML = `<div class="agent-empty">Could not scan. Is the server running? (${escapeHtml(err.message)})</div>`;
+    $("agent-grid").innerHTML = `<div class="agent-empty">Could not scan. Double-click Start Prompter again and leave that window open. (${escapeHtml(err.message)})</div>`;
     $("agent-status").textContent = "Scan failed";
-    toast("Agent scan failed", true);
+    toast("Could not scan for apps", true);
   }
 }
 
@@ -341,14 +394,15 @@ function showWorkshopScreen() {
   $("btn-change-project").hidden = false;
   $("btn-rescan").hidden = false;
   $("agent-status").hidden = false;
-  $("logo-sub").textContent = "project loaded · pick CLI → run";
+  $("logo-sub").textContent = "project loaded · pick app → run";
   updateProjectContextUI();
 }
 
-function updateProjectContextUI(usedFiles) {
+function updateProjectContextUI(meta) {
   const p = state.project;
   const status = $("context-status");
   const usedEl = $("counter-used");
+  const evidenceEl = $("evidence-list");
 
   if (!p) {
     status.hidden = true;
@@ -357,27 +411,54 @@ function updateProjectContextUI(usedFiles) {
 
   $("project-chip-name").textContent = p.name || p.path || "Project";
   $("project-chip-path").textContent = shortPath(p.path || "");
-  $("cwd").value = p.path || "";
+  if ($("cwd")) $("cwd").value = p.path || "";
 
   const files = p.fileCount ?? 0;
   const tokens = p.tokens ?? 0;
-  const size = p.bytesLabel || "—";
+  const size = p.bytesLabel || "-";
 
-  $("counter-files").innerHTML = `<strong>${files}</strong> files`;
-  $("counter-tokens").innerHTML = `<strong>~${formatTokens(tokens)}</strong> tokens`;
+  $("counter-files").innerHTML = `<strong>${files}</strong> indexed`;
+  $("counter-tokens").innerHTML = `<strong>~${formatTokens(tokens)}</strong> index size`;
   $("counter-size").innerHTML = `<strong>${escapeHtml(size)}</strong> on disk`;
 
-  if (typeof usedFiles === "number" && usedFiles > 0) {
-    usedEl.hidden = false;
-    $("counter-used-n").textContent = String(usedFiles);
-  } else if (Array.isArray(usedFiles) && usedFiles.length) {
+  const usedFiles = meta?.projectFiles || meta?.usedFiles || state.lastEvidence;
+  const promptTokens = meta?.promptTokens ?? state.lastPromptTokens;
+  if (Array.isArray(usedFiles) && usedFiles.length) {
     usedEl.hidden = false;
     $("counter-used-n").textContent = String(usedFiles.length);
+  }
+  if (promptTokens != null && $("counter-prompt")) {
+    $("counter-prompt").hidden = false;
+    $("counter-prompt").innerHTML = `<strong>~${formatTokens(promptTokens)}</strong> in last prompt`;
+  }
+
+  if (evidenceEl) {
+    const ev = meta?.evidence || state.lastEvidence;
+    if (Array.isArray(ev) && ev.length && typeof ev[0] === "object") {
+      evidenceEl.hidden = false;
+      evidenceEl.innerHTML =
+        `<div class="evidence-title">Files used for last prompt</div>` +
+        ev
+          .map(
+            (e) =>
+              `<div class="evidence-row"><code>${escapeHtml(e.path)}</code>` +
+              (e.reasons?.length
+                ? `<span class="muted"> ${escapeHtml(e.reasons.slice(0, 2).join("; "))}</span>`
+                : "") +
+              `</div>`
+          )
+          .join("");
+    } else if (Array.isArray(usedFiles) && usedFiles.length && typeof usedFiles[0] === "string") {
+      evidenceEl.hidden = false;
+      evidenceEl.innerHTML =
+        `<div class="evidence-title">Files used for last prompt</div>` +
+        usedFiles.map((p) => `<div class="evidence-row"><code>${escapeHtml(p)}</code></div>`).join("");
+    }
   }
 
   status.hidden = false;
   $("context-status-text").textContent = `Context loaded · ${files} files`;
-  status.title = `${p.name || "Project"}: ${files} files, ~${formatTokens(tokens)} tokens, ${size}`;
+  status.title = `${p.name || "Project"}: ${files} files indexed, ~${formatTokens(tokens)} index tokens, ${size}`;
 }
 
 function formatTokens(n) {
@@ -397,16 +478,14 @@ async function attachProjectFlow() {
   $("attach-sub").textContent = "Opening folder picker…";
 
   try {
-    const pickRes = await fetch("/api/pick-folder", { method: "POST" });
-    const pick = await pickRes.json();
+    const { data: pick } = await api("/api/pick-folder", { method: "POST" });
     if (!pick.ok) throw new Error(pick.error || "Picker failed");
     if (pick.cancelled || !pick.path) {
       $("attach-sub").textContent = "Opens the normal folder picker";
-      toast("Cancelled");
+      toast("No folder chosen");
       return;
     }
 
-    // Background read, then switch to workshop
     loading.hidden = false;
     btn.hidden = true;
     $("attach-loading-title").textContent = "Reading your project…";
@@ -414,17 +493,17 @@ async function attachProjectFlow() {
     hint.textContent = "Looking through the code on this computer…";
     hint.className = "field-hint ok";
 
-    const attachRes = await fetch("/api/attach-project", {
+    const { data } = await api("/api/attach-project", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ path: pick.path }),
+      body: JSON.stringify({ path: pick.path, ticket: pick.ticket }),
     });
-    const data = await attachRes.json();
     if (!data.ok) throw new Error(data.error || "Could not read project");
 
     state.projectId = data.project.id;
     state.project = data.project;
-    localStorage.setItem("prompter.projectPath", data.project.path);
+    state.lastEvidence = [];
+    state.lastPromptTokens = null;
+    sessionStorage.setItem("prompter.projectPath", data.project.path);
 
     showWorkshopScreen();
     if (!state.workshopReady) {
@@ -432,7 +511,7 @@ async function attachProjectFlow() {
     } else {
       await scanAgents();
     }
-    toast(`Loaded ${data.project.name}`);
+    toast(`Project context loaded · ${data.project.fileCount} files`);
   } catch (e) {
     hint.textContent = e.message || "Attach failed";
     hint.className = "field-hint err";
@@ -450,9 +529,15 @@ async function ensureWorkshop() {
   const savedDir = localStorage.getItem("prompter.direction");
   if (savedDir) state.direction = savedDir;
 
-  const catRes = await fetch("/api/catalog");
-  state.catalog = await catRes.json();
+  await ensureSession();
+  const { data: catalog } = await api("/api/catalog");
+  state.catalog = catalog;
   renderDirections();
+  // Platform-aware run shortcut label
+  const kbd = $("run-kbd");
+  if (kbd) {
+    kbd.textContent = /Mac|iPhone|iPad/.test(navigator.platform || "") ? "⌘↵" : "Ctrl+Enter";
+  }
 
   const tools = state.catalog.tools || Object.keys(EXPORT_LABELS);
   $("export-tool").innerHTML = tools
@@ -520,14 +605,15 @@ function setupWorkshopHandlers() {
 }
 
 function composeBody(input) {
+  const profile = profileForAgent(state.agentId || "generic");
   return {
     input,
     direction: state.direction,
-    profile: profileForAgent(state.agentId),
-    tool: $("export-tool").value || profileForAgent(state.agentId),
-    extraContext: $("extra").value,
-    strength: $("strength").value || undefined,
-    useLlm: $("use-llm").checked,
+    profile,
+    tool: ($("export-tool") && $("export-tool").value) || profile,
+    extraContext: ($("extra") && $("extra").value) || "",
+    strength: ($("strength") && $("strength").value) || undefined,
+    useLlm: Boolean($("use-llm") && $("use-llm").checked),
     projectId: state.projectId || undefined,
   };
 }
@@ -538,10 +624,6 @@ async function previewOnly() {
     toast("Type a task first", true);
     return;
   }
-  if (!state.agentId) {
-    toast("Pick a Ready CLI first", true);
-    return;
-  }
   if (!state.projectId) {
     toast("Attach a project first", true);
     return;
@@ -549,16 +631,15 @@ async function previewOnly() {
   const label = $("btn-improve")?.querySelector(".btn-label-preview");
   if (label) label.textContent = "Reading code…";
   try {
-    const res = await fetch("/api/compose", {
+    const { data } = await api("/api/compose", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
       body: JSON.stringify(composeBody(input)),
     });
-    const data = await res.json();
     if (!data.ok) {
-      toast(data.error || "Compose failed", true);
+      toast(data.error || "Could not build prompt", true);
       return;
     }
+    if (data.llmError) toast(`Extra AI rewrite failed: ${data.llmError}`, true);
     const text = data.text || data.improved;
     $("output").value = text;
     $("btn-copy").disabled = false;
@@ -566,26 +647,31 @@ async function previewOnly() {
       agent: state.agentId,
       directionLabel: data.meta?.directionLabel,
     });
-    const files = data.meta?.projectFiles;
-    if (files?.length) updateProjectContextUI(files);
+    state.lastEvidence = data.meta?.evidence || data.meta?.projectFiles || [];
+    state.lastPromptTokens = data.meta?.promptTokens ?? null;
+    updateProjectContextUI(data.meta);
     if ($("auto-copy").checked) {
       try {
         await navigator.clipboard.writeText(text);
         toast(
-          files?.length
-            ? `Prompt ready (used ${files.length} files) + copied`
+          data.meta?.projectFiles?.length
+            ? `Prompt ready (${data.meta.projectFiles.length} files) + copied`
             : "Prompt ready + copied"
         );
       } catch {
         toast("Prompt ready");
       }
     } else {
-      toast(files?.length ? `Prompt ready · ${files.length} project files` : "Prompt ready");
+      toast(
+        data.meta?.projectFiles?.length
+          ? `Prompt ready · ${data.meta.projectFiles.length} project files`
+          : "Prompt ready"
+      );
     }
   } catch (e) {
-    toast(e.message || "Server offline", true);
+    toast(e.message || "Prompter stopped. Open Start Prompter again.", true);
   } finally {
-    if (label) label.textContent = "Preview only";
+    if (label) label.textContent = "Show prompt";
   }
 }
 
@@ -597,7 +683,7 @@ async function runInTerminal() {
     return;
   }
   if (!state.agentId) {
-    toast("Click a Ready CLI above first", true);
+    toast("Click an installed AI app first (or use Show prompt)", true);
     return;
   }
   if (!state.projectId) {
@@ -611,18 +697,15 @@ async function runInTerminal() {
   if (label) label.textContent = "Reading code…";
 
   try {
-    const res = await fetch("/api/run", {
+    const { data } = await api("/api/run", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         ...composeBody(input),
         agent: state.agentId,
-        cwd: $("cwd").value.trim() || state.project?.path || undefined,
         launch: true,
         headless: false,
       }),
     });
-    const data = await res.json();
     if (!data.ok) {
       toast(data.error || "Run failed", true);
       if (data.agents) {
@@ -631,6 +714,7 @@ async function runInTerminal() {
       }
       return;
     }
+    if (data.llmError) toast(`Extra AI rewrite failed: ${data.llmError}`, true);
 
     const promptText = data.composed?.text || "";
     $("output").value = promptText;
@@ -646,12 +730,15 @@ async function runInTerminal() {
     banner.hidden = false;
     $("launch-title").textContent =
       data.launch?.launched === "terminal"
-        ? `Opening ${data.agent?.name || state.agentId} in Terminal`
+        ? `Look at Terminal: ${data.agent?.name || state.agentId} is opening`
         : `Command ready for ${data.agent?.name || state.agentId}`;
     $("launch-detail").textContent =
       data.launch?.message ||
-      "A Terminal window should open with your agent. Complete the task there.";
-    $("launch-cmd").textContent = state.lastShell || "(no shell string)";
+      "A Terminal window should open with your coding app. Finish the task there. This browser page can stay open.";
+    $("launch-cmd").textContent = state.lastShell || "";
+    if ($("launch-cmd")) {
+      $("launch-cmd").hidden = !state.lastShell || data.launch?.launched === "terminal";
+    }
 
     if ($("auto-copy").checked && promptText) {
       try {
@@ -671,16 +758,17 @@ async function runInTerminal() {
       directionId: state.direction,
     });
 
-    const usedFiles = data.composed?.meta?.projectFiles;
-    if (usedFiles?.length) updateProjectContextUI(usedFiles);
-    const used = usedFiles?.length;
+    state.lastEvidence = data.composed?.meta?.evidence || data.composed?.meta?.projectFiles || [];
+    state.lastPromptTokens = data.composed?.meta?.promptTokens ?? null;
+    updateProjectContextUI(data.composed?.meta);
+    const used = data.composed?.meta?.projectFiles?.length;
     toast(
       data.launch?.launched === "terminal"
-        ? `Terminal → ${data.agent?.id}${used ? ` · ${used} files` : ""}`
-        : "Command ready. Copy it if Terminal didn’t open"
+        ? `Check Terminal${used ? ` · ${used} files in prompt` : ""}`
+        : "Command ready. Copy it if Terminal did not open"
     );
   } catch (e) {
-    toast(e.message || "Server offline. Try npm start.", true);
+    toast(e.message || "Prompter stopped. Open Start Prompter again.", true);
   } finally {
     btn.disabled = false;
     if (label) label.textContent = "Run in Terminal";
@@ -698,15 +786,31 @@ function setupOnboarding() {
 
 async function init() {
   showAttachScreen();
+  try {
+    await ensureSession();
+  } catch (e) {
+    toast(e.message || "Could not connect. Open Start Prompter again.", true);
+  }
   $("btn-attach").addEventListener("click", attachProjectFlow);
-  $("btn-change-project").addEventListener("click", () => {
+  $("btn-change-project").addEventListener("click", async () => {
+    try {
+      if (state.projectId) {
+        await api("/api/detach-project", {
+          method: "POST",
+          body: JSON.stringify({ projectId: state.projectId }),
+        });
+      }
+    } catch {
+      /* ignore */
+    }
     state.projectId = null;
     state.project = null;
+    state.lastEvidence = [];
     showAttachScreen();
   });
 }
 
 init().catch((err) => {
   console.error(err);
-  toast("Load failed. Run npm start.", true);
+  toast("Could not load. Double-click Start Prompter and leave that window open.", true);
 });
