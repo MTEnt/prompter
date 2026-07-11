@@ -1,6 +1,6 @@
 ---
 id: improve-this-prompt
-title: Meta — improve this prompt
+title: Meta: improve this prompt
 description: Second-order prompt: ask the model to rewrite a weak prompt (when not using Prompter local engine).
 category: meta
 tags: [meta, prompt-engineering]

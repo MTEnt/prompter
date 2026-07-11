@@ -22,7 +22,7 @@ variables:
 Improve UI for: {{surface}}
 
 ## Visual direction
-{{direction|Distinctive, intentional, product-grade—not generic AI SaaS.}}
+{{direction|Distinctive, intentional, product-grade. Not generic AI SaaS.}}
 
 ## Constraints
 {{constraints|Preserve brand tokens and behavior unless redesign is explicit.}}
@@ -38,5 +38,5 @@ Load frontend/design skills (e.g. `$gpt-taste`, `$frontend-design`, `$impeccable
 ## Definition of done
 - Clear hierarchy on mobile + desktop
 - Accessible contrast and focus states
-- Complete CSS/markup—no placeholders
+- Complete CSS/markup. No placeholders
 - Matches direction without breaking core UX

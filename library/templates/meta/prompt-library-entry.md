@@ -1,6 +1,6 @@
 ---
 id: prompt-library-entry
-title: Meta — draft a library template
+title: Meta: draft a library template
 description: Create a new Prompter template in frontmatter+markdown form.
 category: meta
 tags: [meta, library]

@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Prompter CLI — library + improve + export for any AI tool.
+ * Prompter CLI: library + improve + export for any AI tool.
  *
  * Usage:
  *   prompter serve
@@ -57,7 +57,7 @@ const TOOLS = [
 ];
 
 function printHelp() {
-  console.log(`Prompter — compose a great prompt, then run it on a real AI agent
+  console.log(`Prompter: compose a good prompt, then run it on a real AI agent
 
 Detect agents on this machine:
   prompter agents
@@ -353,7 +353,7 @@ function cmdPatterns(flags) {
     return;
   }
   for (const p of patterns) {
-    console.log(`${p.id.padEnd(22)} ${p.title} — ${p.summary}`);
+    console.log(`${p.id.padEnd(22)} ${p.title}: ${p.summary}`);
   }
 }
 
@@ -456,7 +456,7 @@ async function cmdRun(parsed, flags) {
   }
 
   console.error(
-    `[compose] ${composed.meta?.directionLabel || direction} · patterns: ${(composed.meta?.patterns || []).join(", ") || "—"}`
+    `[compose] ${composed.meta?.directionLabel || direction} · patterns: ${(composed.meta?.patterns || []).join(", ") || "-"}`
   );
 
   const result = await runAgent(agentId, promptText, {

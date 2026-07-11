@@ -26,9 +26,9 @@ Build/improve a landing page for **{{product}}**.
 {{promise|one clear value proposition}}
 
 ## Narrative structure
-1. Hero — brand, promise, CTA, one dominant visual
-2. Support — one concrete proof/feature
-3. Detail — product depth
+1. Hero: brand, promise, CTA, one dominant visual
+2. Support: one concrete proof/feature
+3. Detail: product depth
 4. Final CTA
 
 ## Hard rules
