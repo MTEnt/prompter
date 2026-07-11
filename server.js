@@ -392,6 +392,25 @@ async function handleApi(req, res, url) {
     return send(res, 200, { ok: true });
   }
 
+  if (req.method === "POST" && url.pathname === "/api/reindex-project") {
+    if (!requireMutatingAuth(req, res)) return;
+    let body;
+    try {
+      body = await readBody(req);
+    } catch (e) {
+      return send(res, 400, { ok: false, error: e.message || "Invalid JSON" });
+    }
+    const need = requireProject(body.projectId);
+    if (!need.ok) return send(res, 409, need);
+    try {
+      detachProject(body.projectId);
+      const meta = await attachProject(need.project.path, { structureOnly: false });
+      return send(res, 200, { ok: true, project: meta });
+    } catch (e) {
+      return send(res, 500, { ok: false, error: e.message || String(e) });
+    }
+  }
+
   if (req.method === "POST" && url.pathname === "/api/run") {
     if (!requireMutatingAuth(req, res)) return;
     let body;
