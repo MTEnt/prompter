@@ -32,31 +32,35 @@ So: Prompter is local. The agent you launch may still send the prompt (including
 
 ## How to open it
 
-### 1. Install Node.js (one time)
+### One-time: install Node.js
 
-If you do not have it yet: [nodejs.org](https://nodejs.org) → download **LTS** → install like any normal app.
+If you do not have it: [nodejs.org](https://nodejs.org) → **LTS** → install like any normal app.  
+(npm comes with Node; Prompter uses it automatically.)
 
-### 2. Start Prompter
-
-Download or clone this folder, then **double-click** the file for your computer:
+### Every time: double-click one file
 
 | Mac | Windows | Linux |
 |-----|---------|--------|
 | `Start Prompter.command` | `Start Prompter.bat` | `start-prompter.sh` |
 
-A black window will open. **Leave it open.**  
-Your browser should go to: **http://127.0.0.1:3847**
+That single file will:
 
-To quit: close that black window.
+1. Install missing dependencies if needed (first run may take a minute + internet)
+2. Start Prompter on this computer
+3. Open your browser to **http://127.0.0.1:3847**
+
+A black window opens. **Leave it open.** Close it to quit.
+
+You do **not** need to run `npm install` yourself.
 
 ---
 
 ### If double-click does not work
 
 **Mac**  
-Right-click `Start Prompter.command` → **Open** → confirm.
+Right-click `Start Prompter.command` → **Open** → confirm (Gatekeeper).
 
-**Linux** (once in a terminal, inside this folder):
+**Linux** (once):
 
 ```bash
 chmod +x start-prompter.sh
@@ -64,7 +68,7 @@ chmod +x start-prompter.sh
 ```
 
 **"Node is not installed"**  
-You skipped step 1. Install Node.js, then try again.
+Install Node LTS from https://nodejs.org, then double-click again.
 
 ---
 
