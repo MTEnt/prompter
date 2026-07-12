@@ -14,6 +14,8 @@ const state = {
   token: null,
   lastEvidence: [],
   lastPromptTokens: null,
+  lastReport: null,
+  excludePaths: [],
   showAllDirections: false,
 };
 
@@ -506,24 +508,78 @@ function updateProjectContextUI(meta) {
   }
 
   if (evidenceEl) {
+    const report = meta?.retrievalReport || state.lastReport;
     const ev = meta?.evidence || state.lastEvidence;
-    if (Array.isArray(ev) && ev.length && typeof ev[0] === "object") {
+    if (report && (report.direct?.length || report.expanded?.length || report.supporting?.length)) {
+      evidenceEl.hidden = false;
+      const tierBlock = (title, items, tier) => {
+        if (!items?.length) return "";
+        return (
+          `<div class="evidence-title">${escapeHtml(title)}</div>` +
+          items
+            .slice(0, 6)
+            .map((e) => {
+              const file = e.file || e.path;
+              const excluded = state.excludePaths.includes(file);
+              return (
+                `<div class="evidence-row" data-file="${escapeHtml(file)}">` +
+                `<span class="tier-pill tier-${escapeHtml(tier)}">${escapeHtml(tier)}</span> ` +
+                `<code>${escapeHtml(e.path || file)}</code>` +
+                (e.reasons?.length
+                  ? `<span class="muted"> ${escapeHtml(humanReason(e.reasons[0]))}</span>`
+                  : "") +
+                `<button type="button" class="ghost evidence-exclude" data-path="${escapeHtml(file)}">${
+                  excluded ? "undo" : "exclude"
+                }</button>` +
+                `</div>`
+              );
+            })
+            .join("")
+        );
+      };
+      evidenceEl.innerHTML =
+        tierBlock("Direct matches", report.direct, "direct") +
+        tierBlock("Graph-expanded (related sites)", report.expanded, "expanded") +
+        tierBlock("Supporting", report.supporting, "supporting") +
+        (report.omitted?.length
+          ? `<div class="evidence-title">Omitted (budget/rank)</div>` +
+            report.omitted
+              .slice(0, 5)
+              .map((o) => `<div class="evidence-row muted"><code>${escapeHtml(o.path)}</code></div>`)
+              .join("")
+          : "") +
+        `<p class="field-hint">Prompter redacts common secrets but is not a guarantee. Review before sending to a cloud agent.</p>`;
+      evidenceEl.querySelectorAll(".evidence-exclude").forEach((btn) => {
+        btn.addEventListener("click", () => {
+          const p = btn.getAttribute("data-path");
+          if (!p) return;
+          if (state.excludePaths.includes(p)) {
+            state.excludePaths = state.excludePaths.filter((x) => x !== p);
+          } else {
+            state.excludePaths = [...state.excludePaths, p];
+          }
+          toast(state.excludePaths.includes(p) ? `Excluded ${p}` : `Included ${p} again`);
+          updateProjectContextUI({
+            retrievalReport: state.lastReport,
+            evidence: state.lastEvidence,
+            projectFiles: state.lastEvidence,
+            promptTokens: state.lastPromptTokens,
+          });
+        });
+      });
+    } else if (Array.isArray(ev) && ev.length && typeof ev[0] === "object") {
       evidenceEl.hidden = false;
       const show = ev.slice(0, 8);
-      const more = ev.length - show.length;
       evidenceEl.innerHTML =
-        `<div class="evidence-title">Files used for last prompt</div>` +
+        `<div class="evidence-title">Evidence used for last prompt</div>` +
         show
           .map(
             (e) =>
               `<div class="evidence-row"><code>${escapeHtml(e.path)}</code>` +
-              (e.reasons?.length
-                ? `<span class="muted"> ${escapeHtml(humanReason(e.reasons[0]))}</span>`
-                : "") +
+              (e.tier ? `<span class="muted"> [${escapeHtml(e.tier)}]</span>` : "") +
               `</div>`
           )
-          .join("") +
-        (more > 0 ? `<div class="evidence-row muted">+${more} more</div>` : "");
+          .join("");
     } else if (Array.isArray(usedFiles) && usedFiles.length && typeof usedFiles[0] === "string") {
       evidenceEl.hidden = false;
       evidenceEl.innerHTML =
@@ -583,6 +639,8 @@ async function attachProjectFlow() {
     state.project = data.project;
     state.lastEvidence = [];
     state.lastPromptTokens = null;
+    state.lastReport = null;
+    state.excludePaths = [];
     sessionStorage.setItem("prompter.projectPath", data.project.path);
 
     showWorkshopScreen();
@@ -696,6 +754,8 @@ function composeBody(input) {
     strength: ($("strength") && $("strength").value) || undefined,
     useLlm: Boolean($("use-llm") && $("use-llm").checked),
     projectId: state.projectId || undefined,
+    excludePaths: state.excludePaths || [],
+    includePaths: [],
   };
 }
 
@@ -734,6 +794,7 @@ async function previewOnly() {
     });
     state.lastEvidence = data.meta?.evidence || data.meta?.projectFiles || [];
     state.lastPromptTokens = data.meta?.promptTokens ?? null;
+    state.lastReport = data.meta?.retrievalReport || null;
     updateProjectContextUI(data.meta);
     pushHistory({
       input,
@@ -745,23 +806,17 @@ async function previewOnly() {
       directionId: state.direction,
     });
     $("output")?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+    const n = data.meta?.projectFiles?.length || 0;
+    const mode = data.meta?.retrievalMode || "";
     if ($("auto-copy").checked) {
       try {
         await navigator.clipboard.writeText(text);
-        toast(
-          data.meta?.projectFiles?.length
-            ? `Prompt ready (${data.meta.projectFiles.length} files) + copied`
-            : "Prompt ready + copied"
-        );
+        toast(n ? `Prompt ready (${n} files, ${mode}) + copied` : "Prompt ready + copied");
       } catch {
         toast("Prompt ready");
       }
     } else {
-      toast(
-        data.meta?.projectFiles?.length
-          ? `Prompt ready · ${data.meta.projectFiles.length} project files`
-          : "Prompt ready"
-      );
+      toast(n ? `Prompt ready · ${n} files · ${mode}` : "Prompt ready");
     }
   } catch (e) {
     toast(e.message || "Prompter stopped. Open Start Prompter again.", true);
@@ -856,6 +911,7 @@ async function runInTerminal() {
 
     state.lastEvidence = data.composed?.meta?.evidence || data.composed?.meta?.projectFiles || [];
     state.lastPromptTokens = data.composed?.meta?.promptTokens ?? null;
+    state.lastReport = data.composed?.meta?.retrievalReport || null;
     updateProjectContextUI(data.composed?.meta);
     const used = data.composed?.meta?.projectFiles?.length;
     toast(

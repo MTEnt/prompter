@@ -1,0 +1,5 @@
+{
+  "currency": "USD",
+  "duplicateWindowMinutes": 15,
+  "emailProvider": "mock"
+}

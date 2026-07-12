@@ -1,7 +1,7 @@
 {
   "name": "prompter",
-  "version": "1.4.0",
-  "description": "Local app: attach a project, tree-sitter symbol index, rank code for your request, open a coding CLI with a grounded prompt",
+  "version": "1.5.0",
+  "description": "Local context layer for coding agents: tree-sitter symbols, graph expansion, retrieval eval, grounded prompt handoff",
   "type": "module",
   "main": "server.js",
   "bin": {
@@ -15,7 +15,9 @@
     "doctor": "node bin/prompter.js doctor",
     "agents": "node bin/prompter.js agents",
     "list": "node bin/prompter.js list",
-    "test": "node scripts/smoke-context.mjs"
+    "test": "node scripts/smoke-context.mjs && node scripts/eval-retrieval.mjs",
+    "test:smoke": "node scripts/smoke-context.mjs",
+    "test:eval": "node scripts/eval-retrieval.mjs"
   },
   "engines": {
     "node": ">=18"
