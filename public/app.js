@@ -483,6 +483,14 @@ function updateProjectContextUI(meta) {
   const size = p.bytesLabel || "-";
 
   $("counter-files").innerHTML = `<strong>${files}</strong> indexed`;
+  const syms = p.symbolCount ?? 0;
+  if ($("counter-symbols")) {
+    $("counter-symbols").innerHTML = `<strong>${syms}</strong> symbols`;
+    $("counter-symbols").title =
+      p.symbolEngine === "tree-sitter"
+        ? "Parsed with tree-sitter (functions, classes, methods)"
+        : "Symbol parse unavailable";
+  }
   $("counter-tokens").innerHTML = `<strong>~${formatTokens(tokens)}</strong> index size`;
   $("counter-size").innerHTML = `<strong>${escapeHtml(size)}</strong> on disk`;
 
@@ -528,8 +536,9 @@ function updateProjectContextUI(meta) {
   }
 
   status.hidden = false;
-  $("context-status-text").textContent = `Context loaded · ${files} files`;
-  status.title = `${p.name || "Project"}: ${files} files indexed, ~${formatTokens(tokens)} index tokens, ${size}`;
+  $("context-status-text").textContent =
+    syms > 0 ? `Context loaded · ${files} files · ${syms} symbols` : `Context loaded · ${files} files`;
+  status.title = `${p.name || "Project"}: ${files} files, ${syms} symbols (tree-sitter), ~${formatTokens(tokens)} index tokens, ${size}`;
 }
 
 function formatTokens(n) {

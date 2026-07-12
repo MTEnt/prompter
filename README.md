@@ -11,9 +11,9 @@ Works with tools you already have: Grok, Codex, Claude, Gemini, and similar CLIs
 A small localhost workshop for people who use coding agents but do not want to hand-craft prompts:
 
 1. Choose a **project folder** (normal system picker).
-2. Prompter **reads the codebase** on your machine and shows **project context loaded** (file / token counters).
-3. Pick a **Ready** CLI, pick what you want done, type a sentence.
-4. On **Show prompt** or **Run**, it ranks real files against your request, builds a grounded prompt, and can launch the CLI in that project folder.
+2. Prompter **reads the codebase** on your machine, **parses symbols with tree-sitter** (functions, classes, methods), and shows **project context loaded** (files + symbols).
+3. Pick a **Ready** coding app, pick what you want done, type a sentence.
+4. On **Show prompt** or **Run**, it matches your words to **real symbols and files**, injects signatures and targeted bodies (not a blind whole-repo dump), and can launch the CLI in that project folder.
 
 Optional: advanced users can polish with a local or API LLM via `.env` (see `.env.example`). Core flow needs no keys.
 
