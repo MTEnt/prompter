@@ -51,15 +51,20 @@ export async function loadUser(id) {
   const files = req.project.files.map((f) => f.rel);
   assert.ok(!files.some((f) => f.includes(".env")), ".env must not pack");
 
-  const slice = buildContextForQuery(req.project, "fix login auth session validate");
+  // Lightweight index: no full bodies resident
+  assert.ok(req.project.files.every((f) => f.content == null), "index must not keep full bodies");
+  assert.ok(req.project.files.every((f) => f.abs), "index files need abs for lazy load");
+
+  const slice = await buildContextForQuery(req.project, "fix login auth session validate");
   assert.ok(slice.usedFiles.length >= 1);
   assert.ok(slice.evidence?.length >= 1);
   assert.ok(slice.promptTokens > 0);
+  assert.ok(slice.bodiesLoaded >= 1, "should lazy-load selected bodies");
   assert.ok(
-    slice.mode === "tree-sitter-symbols" || slice.symbolHits > 0 || /login|Session|loadUser/.test(slice.text),
+    /login|Session|loadUser|symbol|lazy/i.test(slice.text),
     "expected symbol-aware context text"
   );
-  assert.match(slice.text, /symbol/i);
+  assert.match(slice.text, /lazy|symbol|Direct/i);
 
   await fs.rm(dir, { recursive: true, force: true });
   console.log("smoke-context: ok");

@@ -9,9 +9,9 @@ Local only. No account. No Prompter telemetry.
 ### What it is
 
 1. Choose a **project folder** (system picker).
-2. Prompter **indexes** the repo: files + **symbols** + lightweight **graph** (JS/TS imports, tests, references).
+2. Prompter **indexes the whole tree lightly** (paths, symbols, imports) without keeping every file body in memory.
 3. You pick a coding app and type a task.
-4. On **Show prompt** or **Run**, retrieval returns **direct** matches, **graph-expanded** related sites, and **supporting** files — then launches the agent in that folder.
+4. On **Show prompt** or **Run**, it ranks evidence, **loads only selected file bodies**, returns **direct / graph-expanded / supporting** tiers — then launches the agent in that folder.
 
 **Honest limit:** ranking is still largely lexical + graph expansion, not full semantic “codebase understanding.” Use the evidence panel (exclude paths) before trusting cloud agents.
 
