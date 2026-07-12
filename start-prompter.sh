@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Double-click / run on Mac or Linux.
+# Linux / terminal start. Same as double-click launchers.
 cd "$(dirname "$0")" || exit 1
 
 if ! command -v node >/dev/null 2>&1; then
