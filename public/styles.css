@@ -401,6 +401,43 @@ body {
   color: var(--accent-dim);
 }
 
+.evidence-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.evidence-exclude {
+  margin-left: auto;
+  padding: 0.15rem 0.45rem !important;
+  font-size: 0.7rem !important;
+}
+
+.tier-pill {
+  font-size: 0.65rem;
+  font-family: var(--mono);
+  padding: 0.1rem 0.35rem;
+  border-radius: 4px;
+  border: 1px solid var(--line);
+  color: var(--muted);
+  text-transform: uppercase;
+}
+
+.tier-direct {
+  border-color: color-mix(in srgb, var(--ok) 40%, var(--line));
+  color: var(--ok);
+}
+
+.tier-expanded {
+  border-color: color-mix(in srgb, var(--accent) 35%, var(--line));
+  color: var(--accent-dim);
+}
+
+.tier-supporting {
+  color: var(--faint);
+}
+
 .step-n.inline {
   display: inline-grid;
   width: 1.1rem;

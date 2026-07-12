@@ -1,0 +1,67 @@
+[
+  {
+    "id": "exact-symbol-createInvoice",
+    "query": "fix createInvoice to validate amount > 0",
+    "kind": "exact-symbol",
+    "must_files": ["src/billing/invoice.js"],
+    "must_symbols": ["createInvoice"],
+    "nice_files": ["tests/invoice.test.js"]
+  },
+  {
+    "id": "conceptual-duplicate-invoices",
+    "query": "users occasionally receive duplicate invoices",
+    "kind": "conceptual",
+    "must_files": ["src/billing/duplicate.js", "src/billing/invoice.js"],
+    "must_symbols": ["detectDuplicateInvoice"],
+    "nice_files": ["config/billing.json", "src/api/routes.js"]
+  },
+  {
+    "id": "multi-site-decouple",
+    "query": "remove the architectural coupling between billing and account provisioning",
+    "kind": "multi-site",
+    "must_files": ["src/billing/invoice.js", "src/accounts/provision.js"],
+    "must_symbols": ["sendInvoice", "provisionAccount"],
+    "nice_files": ["src/api/routes.js"]
+  },
+  {
+    "id": "test-related",
+    "query": "add tests for invoice sending failures",
+    "kind": "test-related",
+    "must_files": ["tests/invoice.test.js", "src/billing/invoice.js"],
+    "must_symbols": ["sendInvoice"],
+    "nice_files": ["src/billing/duplicate.js"]
+  },
+  {
+    "id": "route-to-billing",
+    "query": "the POST /invoices route returns wrong status after send",
+    "kind": "cross-file",
+    "must_files": ["src/api/routes.js", "src/billing/invoice.js"],
+    "must_symbols": ["registerRoutes", "sendInvoice"],
+    "nice_files": []
+  },
+  {
+    "id": "misleading-name",
+    "query": "fix Session validation in billing",
+    "kind": "misleading",
+    "must_files": [],
+    "must_symbols": [],
+    "nice_files": ["src/billing/invoice.js"],
+    "notes": "No Session symbol exists; should not invent Session module. Prefer billing files over inventing auth."
+  },
+  {
+    "id": "config-dependent",
+    "query": "change duplicate invoice window from config",
+    "kind": "config",
+    "must_files": ["config/billing.json", "src/billing/duplicate.js"],
+    "must_symbols": ["detectDuplicateInvoice"],
+    "nice_files": ["src/billing/invoice.js"]
+  },
+  {
+    "id": "exact-formatInvoiceTotal",
+    "query": "update formatInvoiceTotal for EUR",
+    "kind": "exact-symbol",
+    "must_files": ["src/billing/invoice.js"],
+    "must_symbols": ["formatInvoiceTotal"],
+    "nice_files": ["config/billing.json"]
+  }
+]

@@ -1,0 +1,7 @@
+{
+  "name": "billing-app-fixture",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "description": "Eval fixture for Prompter retrieval (not a real product)"
+}

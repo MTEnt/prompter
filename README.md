@@ -1,19 +1,26 @@
 # Prompter
 
-**Attach a project on your computer. Pick an AI coding CLI. Type a messy request. Prompter reads your code, writes a solid prompt, and opens the tool for you.**
+**Local context layer for coding agents** — not another agent, and not just a prompt rewriter.
 
-Local only. No account. Nothing is uploaded.
+Attach a project on your computer. Prompter indexes symbols (tree-sitter), expands related files (imports / tests / references), builds a **scoped evidence pack**, then opens the coding CLI you already use (Grok, Codex, Claude, Gemini, …).
 
-Works with tools you already have: Grok, Codex, Claude, Gemini, and similar CLIs.
+Local only. No account. No Prompter telemetry.
 
 ### What it is
 
-A small localhost workshop for people who use coding agents but do not want to hand-craft prompts:
+1. Choose a **project folder** (system picker).
+2. Prompter **indexes** the repo: files + **symbols** + lightweight **graph** (JS/TS imports, tests, references).
+3. You pick a coding app and type a task.
+4. On **Show prompt** or **Run**, retrieval returns **direct** matches, **graph-expanded** related sites, and **supporting** files — then launches the agent in that folder.
 
-1. Choose a **project folder** (normal system picker).
-2. Prompter **reads the codebase** on your machine, **parses symbols with tree-sitter** (functions, classes, methods), and shows **project context loaded** (files + symbols).
-3. Pick a **Ready** coding app, pick what you want done, type a sentence.
-4. On **Show prompt** or **Run**, it matches your words to **real symbols and files**, injects signatures and targeted bodies (not a blind whole-repo dump), and can launch the CLI in that project folder.
+**Honest limit:** ranking is still largely lexical + graph expansion, not full semantic “codebase understanding.” Use the evidence panel (exclude paths) before trusting cloud agents.
+
+### Measure it
+
+```bash
+npm test          # smoke + retrieval eval on a labeled fixture
+npm run test:eval # retrieval recall only
+```
 
 Optional: advanced users can polish with a local or API LLM via `.env` (see `.env.example`). Core flow needs no keys.
 

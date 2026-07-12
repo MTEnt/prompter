@@ -201,7 +201,10 @@ async function composePipeline(body) {
   if (!need.ok) return need;
   const project = need.project;
 
-  const slice = buildContextForQuery(project, input);
+  const slice = buildContextForQuery(project, input, {
+    includePaths: Array.isArray(body.includePaths) ? body.includePaths : [],
+    excludePaths: Array.isArray(body.excludePaths) ? body.excludePaths : [],
+  });
   let result = composeAndExport({
     input,
     directionId: body.direction || body.directionId || "freeform",
@@ -223,6 +226,10 @@ async function composePipeline(body) {
     promptTokens: slice.promptTokens,
     indexedFiles: project.files.length,
     indexedTokens: project.stats?.tokens ?? null,
+    symbolCount: project.symbolIndex?.symbolCount ?? 0,
+    retrievalMode: slice.mode,
+    retrievalReport: slice.report || null,
+    symbolHits: slice.symbolHits ?? 0,
   };
 
   if (body.useLlm) {
@@ -296,7 +303,7 @@ async function handleApi(req, res, url) {
     return send(res, 200, {
       ok: true,
       name: "prompter",
-      version: "1.4.0",
+      version: "1.5.0",
       llm: detectLlmConfig(),
       library: idx.count,
       localOnly: true,
