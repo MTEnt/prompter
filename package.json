@@ -1,7 +1,7 @@
 {
   "name": "prompter",
-  "version": "1.5.0",
-  "description": "Local context layer for coding agents: tree-sitter symbols, graph expansion, retrieval eval, grounded prompt handoff",
+  "version": "1.6.0",
+  "description": "Local context layer: full-tree lightweight index, lazy body load, tree-sitter symbols, graph expansion, retrieval eval",
   "type": "module",
   "main": "server.js",
   "bin": {

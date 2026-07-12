@@ -64,7 +64,7 @@ async function main() {
   const rows = [];
 
   for (const t of tasks) {
-    const slice = buildContextForQuery(project, t.query, { maxChars: 16000 });
+    const slice = await buildContextForQuery(project, t.query, { maxChars: 16000 });
     const used = slice.usedFiles || [];
     const evidence = slice.evidence || [];
     const text = slice.text || "";

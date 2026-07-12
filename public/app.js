@@ -490,7 +490,7 @@ function updateProjectContextUI(meta) {
     $("counter-symbols").innerHTML = `<strong>${syms}</strong> symbols`;
     $("counter-symbols").title =
       p.symbolEngine === "tree-sitter"
-        ? "Parsed with tree-sitter (functions, classes, methods)"
+        ? "Tree-sitter symbols over full tree; bodies load only for selected evidence"
         : "Symbol parse unavailable";
   }
   $("counter-tokens").innerHTML = `<strong>~${formatTokens(tokens)}</strong> index size`;

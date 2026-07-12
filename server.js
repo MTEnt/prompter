@@ -201,7 +201,7 @@ async function composePipeline(body) {
   if (!need.ok) return need;
   const project = need.project;
 
-  const slice = buildContextForQuery(project, input, {
+  const slice = await buildContextForQuery(project, input, {
     includePaths: Array.isArray(body.includePaths) ? body.includePaths : [],
     excludePaths: Array.isArray(body.excludePaths) ? body.excludePaths : [],
   });
@@ -303,7 +303,7 @@ async function handleApi(req, res, url) {
     return send(res, 200, {
       ok: true,
       name: "prompter",
-      version: "1.5.0",
+      version: "1.6.0",
       llm: detectLlmConfig(),
       library: idx.count,
       localOnly: true,
