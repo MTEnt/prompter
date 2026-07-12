@@ -296,7 +296,7 @@ async function handleApi(req, res, url) {
     return send(res, 200, {
       ok: true,
       name: "prompter",
-      version: "1.3.0",
+      version: "1.4.0",
       llm: detectLlmConfig(),
       library: idx.count,
       localOnly: true,

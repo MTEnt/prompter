@@ -1,7 +1,7 @@
 {
   "name": "prompter",
-  "version": "1.3.0",
-  "description": "Local app: attach a project folder, pick a coding CLI, type a rough request, get a code-grounded prompt and run it",
+  "version": "1.4.0",
+  "description": "Local app: attach a project, tree-sitter symbol index, rank code for your request, open a coding CLI with a grounded prompt",
   "type": "module",
   "main": "server.js",
   "bin": {
@@ -31,5 +31,9 @@
     "gemini",
     "context"
   ],
-  "license": "MIT"
+  "license": "MIT",
+  "dependencies": {
+    "@vscode/tree-sitter-wasm": "^0.3.1",
+    "web-tree-sitter": "^0.26.10"
+  }
 }
